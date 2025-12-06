@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trt-worker
+  namespace: llm
+  annotations:
+    # ArgoCD Image Updater 配置
+    argocd-image-updater.argoproj.io/image-list: trt-worker=YOUR_REGISTRY/trt-worker
+    argocd-image-updater.argoproj.io/trt-worker.update-strategy: semver
+    argocd-image-updater.argoproj.io/trt-worker.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: main
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trt-worker
+  template:
+    metadata:
+      labels:
+        app: trt-worker
+    spec:
+      nodeSelector:
+        gpu-node: "true"
+      containers:
+      - name: trt
+        image: yourrepo/trt-worker:latest
+        ports:
+          - containerPort: 8003
+            protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /v2/health/ready
+            port: 8003
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /v2/health/live
+            port: 8003
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 5
+        resources:
+          requests:
+            nvidia.com/gpu: 4
+            memory: "16Gi"
+          limits:
+            nvidia.com/gpu: 4
+            memory: "16Gi"
+        args:
+          - "--engine"
+          - "/model/engine.plan"
+        volumeMounts:
+        - name: model-volume
+          mountPath: /model
+      volumes:
+      - name: model-volume
+        hostPath:
+          path: /media/models/trt
+          type: Directory
+

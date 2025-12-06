@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-web
+  namespace: llm
+  labels:
+    app: llm-web
+spec:
+  replicas: 2                 # Two replicas for HA
+  selector:
+    matchLabels:
+      app: llm-web
+  template:
+    metadata:
+      labels:
+        app: llm-web
+    spec:
+      nodeSelector:
+        system: "true"
+      containers:
+        - name: llm-web
+          # Replace with your real web image (React / Vue / static HTML / Nginx)
+          image: nginx:1.25-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          # Mount your static files or use a custom-built image
+          # volumeMounts:
+          #   - name: web-content
+          #     mountPath: /usr/share/nginx/html
+
+      # volumes:
+      #   - name: web-content
+      #     configMap:
+      #       name: llm-web-static-files
+

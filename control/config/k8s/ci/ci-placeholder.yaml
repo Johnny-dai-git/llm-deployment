@@ -1,0 +1,59 @@
+# =========================
+# CI/CD 服务占位符
+# =========================
+# 注意：CI 在本地 laptop 运行，不在 Kubernetes 集群中
+# 此文件仅作为占位符，用于文档和未来可能的扩展
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ci
+  labels:
+    name: ci
+    app.kubernetes.io/name: ci
+    app.kubernetes.io/component: ci-cd
+    app.kubernetes.io/part-of: llm-serving-platform
+  annotations:
+    description: "Namespace for CI/CD services (currently CI runs on local laptop, this is a placeholder for future use)"
+
+---
+# TODO: 如果未来需要在 Kubernetes 中运行 CI 服务，可以在这里添加配置
+# 例如：Jenkins, GitLab Runner, GitHub Actions Runner, Tekton 等
+#
+# 示例配置（注释掉，仅供参考）：
+#
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: ci-service
+#   namespace: ci
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: ci-service
+#   template:
+#     metadata:
+#       labels:
+#         app: ci-service
+#     spec:
+#       containers:
+#       - name: ci-service
+#         image: placeholder/ci-service:latest
+#         ports:
+#         - containerPort: 8080
+#
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: ci-service
+#   namespace: ci
+# spec:
+#   type: ClusterIP
+#   selector:
+#     app: ci-service
+#   ports:
+#   - port: 8080
+#     targetPort: 8080
+

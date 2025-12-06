@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: router-service
+  namespace: llm
+  labels:
+    app: router
+spec:
+  type: ClusterIP
+  selector:
+    app: router
+  ports:
+    - name: http
+      port: 80            # llm-api will call this port
+      targetPort: 9000    # router container listens on 9000
+      protocol: TCP
+

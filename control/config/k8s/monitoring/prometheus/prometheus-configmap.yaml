@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 5s
+
+    scrape_configs:
+
+    # --- Kubernetes Cluster-level metrics ---
+    - job_name: "kube-state-metrics"
+      static_configs:
+        - targets: ["kube-state-metrics.monitoring.svc:8080"]
+
+    - job_name: "node-exporter"
+      static_configs:
+        - targets: ["node-exporter.monitoring.svc:9100"]
+
+    - job_name: "dcgm-exporter"
+      static_configs:
+        - targets: ["dcgm-exporter.monitoring.svc:9400"]
+
+    # --- LLM System Monitoring (Your Services) - Kubernetes Service Discovery ---
+    - job_name: "kubernetes-pods-llm"
+      kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names:
+              - llm
+      relabel_configs:
+        # 只抓取有 prometheus.io/scrape: "true" annotation 的 Pod
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        # 使用 annotation 指定的端口替换 __address__ 中的端口
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+        # 使用 annotation 指定的 metrics 路径，默认 /metrics
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        # 添加 Pod 标签到 metrics
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        # 添加 namespace 标签
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        # 添加 Pod 名称标签
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod_name
+        # 添加容器名称标签
+        - source_labels: [__meta_kubernetes_pod_container_name]
+          action: replace
+          target_label: kubernetes_container_name
+        # 添加 job 标签（从 Pod 的 app 标签获取）
+        - source_labels: [__meta_kubernetes_pod_label_app]
+          action: replace
+          target_label: job
+          regex: (.+)
+          replacement: ${1}
+

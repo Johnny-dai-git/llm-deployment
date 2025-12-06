@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-worker
+  namespace: llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-worker
+  template:
+    metadata:
+      labels:
+        app: llm-worker
+    spec:
+      nodeSelector:
+        role: gpu
+      tolerations:
+      - key: "gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: llm-worker
+        image: johnnycwru/llm-worker-gpu:0.1
+        ports:
+        - containerPort: 8002
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+

@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: router
+  namespace: llm
+  labels:
+    app: router
+  annotations:
+    # ArgoCD Image Updater 配置
+    argocd-image-updater.argoproj.io/image-list: router=YOUR_REGISTRY/router
+    argocd-image-updater.argoproj.io/router.update-strategy: semver
+    argocd-image-updater.argoproj.io/router.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: main
+spec:
+  replicas: 2                      # High availability
+  selector:
+    matchLabels:
+      app: router
+  template:
+    metadata:
+      labels:
+        app: router
+    spec:
+      nodeSelector:
+        system: "true"
+      containers:
+        - name: router
+          image: your-registry/router:latest   # <-- replace with your router image
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 9000              # Router internal HTTP server
+              protocol: TCP
+
+          env:
+            # BERT Worker Service
+            - name: BERT_WORKER_HOST
+              value: "bert-worker-service.llm.svc.cluster.local"
+            - name: BERT_WORKER_PORT
+              value: "8001"
+
+            # vLLM Worker Service
+            - name: VLLM_WORKER_HOST
+              value: "vllm-worker-service.llm.svc.cluster.local"
+            - name: VLLM_WORKER_PORT
+              value: "8002"
+
+            # TensorRT-LLM Worker Service
+            - name: TRT_WORKER_HOST
+              value: "trt-worker-service.llm.svc.cluster.local"
+            - name: TRT_WORKER_PORT
+              value: "8003"
+
+            # Logging / Mode
+            - name: LOG_LEVEL
+              value: "info"
+
+            # Default routing policy
+            - name: ROUTING_POLICY
+              value: "round_robin"
+              # Options you can extend later: "least_load", "latency", "weighted", etc.
+
+          # Router becomes ready AFTER internal table / cache is created
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          # Detect router crash (especially in multi-thread scenarios)
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          # Router is CPU-bound (API routing)，不需要 GPU
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "1Gi"
+

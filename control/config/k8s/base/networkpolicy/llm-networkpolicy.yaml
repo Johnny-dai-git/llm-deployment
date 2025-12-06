@@ -1,0 +1,103 @@
+# 1) Default deny all ingress to Pods in llm namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-default-deny-ingress
+  namespace: llm
+spec:
+  podSelector: {}         # Selects all Pods in llm namespace
+  policyTypes:
+    - Ingress
+  ingress: []             # No ingress allowed by default
+
+---
+# 2) Allow only ingress-nginx namespace -> llm-api Pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-allow-ingress-from-ingress-nginx-to-api
+  namespace: llm
+spec:
+  podSelector:
+    matchLabels:
+      app: llm-api        # llm-api Pods
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx   # ingress-nginx namespace
+
+---
+# 2.5) Allow only ingress-nginx namespace -> llm-web Pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-allow-ingress-from-ingress-nginx-to-web
+  namespace: llm
+spec:
+  podSelector:
+    matchLabels:
+      app: llm-web        # llm-web Pods
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx   # ingress-nginx namespace
+
+---
+# 3) Allow llm-api Pods -> router Pods (egress)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-allow-api-to-router
+  namespace: llm
+spec:
+  podSelector:
+    matchLabels:
+      app: llm-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: router          # router Pods
+      ports:
+        - protocol: TCP
+          port: 9000              # router-service targetPort
+
+---
+# 4) Allow router Pods -> all worker Pods (bert/vllm/trt)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-allow-router-to-workers
+  namespace: llm
+spec:
+  podSelector:
+    matchLabels:
+      app: router
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - bert-worker
+                  - vllm-worker
+                  - trt-worker
+      ports:
+        - protocol: TCP
+          port: 8001           # BERT worker port (adjust if needed)
+        - protocol: TCP
+          port: 8002           # vLLM worker port
+        - protocol: TCP
+          port: 8003           # TRT worker port
+

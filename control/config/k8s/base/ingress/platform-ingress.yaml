@@ -1,0 +1,48 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    # 允许大请求体（用于 API）
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    # 增加超时时间
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      # 路径 1: LLM Web UI
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-web-service
+            namespace: llm
+            port:
+              number: 80
+      
+      # 路径 2: LLM API
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-api-service
+            namespace: llm
+            port:
+              number: 8000
+      
+      # 路径 3: Grafana
+      - path: /grafana
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            namespace: monitoring
+            port:
+              number: 3000
+

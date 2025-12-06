@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-gateway
+  namespace: llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-gateway
+  template:
+    metadata:
+      labels:
+        app: llm-gateway
+    spec:
+      nodeSelector:
+        role: system
+      containers:
+      - name: llm-gateway
+        image: johnnycwru/llm-gateway:0.1
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ROUTER_URL
+          value: "http://llm-router.llm.svc.cluster.local:8001"
+

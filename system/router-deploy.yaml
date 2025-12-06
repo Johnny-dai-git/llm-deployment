@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-router
+  namespace: llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-router
+  template:
+    metadata:
+      labels:
+        app: llm-router
+    spec:
+      nodeSelector:
+        role: system
+      containers:
+      - name: llm-router
+        image: johnnycwru/llm-router:0.1
+        ports:
+        - containerPort: 8001
+        env:
+        - name: WORKER_LIST
+          value: "llm-worker.llm.svc.cluster.local:8002"
+

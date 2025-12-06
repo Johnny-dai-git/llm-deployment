@@ -1,0 +1,164 @@
+#!/bin/bash
+set -e
+
+echo "================ Step 1: Apply namespaces ================"
+kubectl apply -f namespaces/
+
+
+echo "================ Step 2: Label nodes ====================="
+
+CONTROL_NODE="control"
+SYSTEM_NODE="system"
+GPU_NODE1="worker-1"
+GPU_NODE2="worker-2"
+
+echo "Labeling control node..."
+kubectl label node $CONTROL_NODE control=true --overwrite
+
+echo "Labeling system node..."
+kubectl label node $SYSTEM_NODE system=true ingress=true --overwrite
+
+echo "Labeling GPU nodes..."
+kubectl label node $GPU_NODE1 gpu-node=true --overwrite
+kubectl label node $GPU_NODE2 gpu-node=true --overwrite
+
+
+echo "================ Step 3: Deploy MetalLB =================="
+
+# Step 3.1: 安装官方 MetalLB（包含 controller, speaker, RBAC 等）
+echo ">>> 安装官方 MetalLB..."
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+
+# Step 3.2: 等待 MetalLB 组件就绪
+echo ">>> 等待 MetalLB 组件就绪..."
+sleep 10
+
+# Step 3.3: Patch controller resources
+echo ">>> 配置 MetalLB controller resources..."
+kubectl -n metallb-system patch deployment controller \
+  --type='json' \
+  -p='[
+    {"op":"add","path":"/spec/template/spec/containers/0/resources",
+     "value":{"requests":{"cpu":"100m","memory":"128Mi"},
+              "limits":{"cpu":"300m","memory":"512Mi"}}}
+  ]' || echo "⚠ Controller 可能还未就绪，稍后需要手动 patch"
+
+# Step 3.4: Patch speaker resources
+echo ">>> 配置 MetalLB speaker resources..."
+kubectl -n metallb-system patch daemonset speaker \
+  --type='json' \
+  -p='[
+    {"op":"add","path":"/spec/template/spec/containers/0/resources",
+     "value":{"requests":{"cpu":"50m","memory":"64Mi"},
+              "limits":{"cpu":"200m","memory":"256Mi"}}}
+  ]' || echo "⚠ Speaker 可能还未就绪，稍后需要手动 patch"
+
+# Step 3.5: Apply MetalLB IP pool 配置（使用 system node IP）
+echo ">>> 应用 MetalLB IP pool 配置..."
+kubectl apply -f config/k8s/base/metallb/metallb-ip-pool.yaml
+
+kubectl get configmap -n metallb-system || true
+
+
+echo "================ Step 4: Deploy ingress-nginx ============"
+kubectl apply -f ingress-nginx/
+
+
+echo "================ Step 5: Deploy ArgoCD ==================="
+# Step 5.1: 创建 ArgoCD namespace
+echo ">>> 创建 ArgoCD namespace..."
+kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+# Step 5.2: 安装官方 ArgoCD（包含所有组件：server, repo-server, application-controller, redis, dex-server 等）
+echo ">>> 安装官方 ArgoCD..."
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Step 5.3: 等待 ArgoCD 组件就绪
+echo ">>> 等待 ArgoCD 组件就绪..."
+sleep 15
+
+# Step 5.4: 等待 ArgoCD Service 就绪
+echo ">>> 等待 ArgoCD Service 就绪..."
+sleep 5
+
+# Step 5.5: 部署 ArgoCD Ingress
+echo ">>> 部署 ArgoCD Ingress..."
+kubectl apply -f config/k8s/argocd/argocd-ingress.yaml
+
+# Step 5.6: 等待 ArgoCD 完全就绪
+echo ">>> 等待 ArgoCD 完全就绪..."
+sleep 10
+
+# Step 5.7: 部署 ArgoCD Applications（GitOps）
+echo ">>> 部署 ArgoCD Applications..."
+kubectl apply -f config/k8s/argocd/base-application.yaml
+kubectl apply -f config/k8s/argocd/llm-application.yaml
+kubectl apply -f config/k8s/argocd/monitoring-application.yaml
+kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
+
+# Step 5.8: 显示 ArgoCD 初始 admin 密码
+echo ">>> ArgoCD 初始 admin 密码："
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d && echo || echo "⚠ 密码可能还未生成，稍后运行: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+echo ">>> ArgoCD UI: http://149.165.147.30/argocd (等待 Ingress 生效后访问)"
+
+
+echo "================ Step 6: Install ArgoCD Image Updater ==================="
+# Step 6.1: 安装 ArgoCD Image Updater
+echo ">>> 安装 ArgoCD Image Updater..."
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+
+# Step 6.2: 等待 Image Updater 就绪
+echo ">>> 等待 ArgoCD Image Updater 就绪..."
+sleep 10
+
+# Step 6.3: 检查状态
+echo ">>> 检查 ArgoCD Image Updater 状态..."
+kubectl get pods -n argocd | grep image-updater || echo "⚠ Image Updater 可能还未就绪"
+
+# Step 6.4: 提示配置 Secret（如果需要）
+echo ""
+echo ">>> 📝 注意：如果需要使用 Image Updater，请配置以下 Secret："
+echo "   1. Docker Registry 认证（如果需要私有仓库）："
+echo "      kubectl apply -f config/k8s/argocd/image-updater/docker-registry-secret.yaml"
+echo "   2. Git 写回凭证（Image Updater 需要写回 Git）："
+echo "      kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml"
+echo "   3. 在 Deployment 中已添加 Image Updater annotations（占位符）"
+echo "      请修改 Deployment 中的 YOUR_REGISTRY 为实际的 registry 地址"
+
+
+echo "================ Step 7: Check Status ==================="
+kubectl get nodes -o wide
+kubectl get pods -A -o wide
+kubectl get svc -A
+
+echo ""
+echo "=========================================================="
+echo "🚀 Infrastructure deployed successfully from CONTROL NODE!"
+echo ""
+echo "📋 部署说明："
+echo "   - 基础设施（MetalLB, ingress-nginx, ArgoCD）已部署"
+echo "   - ArgoCD Applications 已创建，将从 Git 仓库同步部署所有服务"
+echo "   - 所有服务（LLM Web/API/Router/Workers/Monitoring）将由 ArgoCD 管理"
+echo ""
+echo "🔍 检查状态："
+echo "   - Ingress External IP:"
+echo "     kubectl get svc -n ingress-nginx"
+echo "   - ArgoCD Applications 状态:"
+echo "     kubectl get applications -n argocd"
+echo "   - ArgoCD UI:"
+echo "     http://149.165.147.30/argocd"
+echo "   - ArgoCD admin password:"
+echo "     kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+echo ""
+echo "🌐 服务访问地址（等待 ArgoCD 同步后）："
+echo "   - LLM Web:    http://149.165.147.30/"
+echo "   - LLM API:    http://149.165.147.30/api"
+echo "   - Grafana:    http://149.165.147.30/grafana"
+echo "   - ArgoCD:     http://149.165.147.30/argocd"
+echo ""
+echo "📝 下一步："
+echo "   1. 确保 Git 仓库包含所有 YAML 文件"
+echo "   2. 在 ArgoCD UI 中检查 Applications 同步状态"
+echo "   3. 如需使用 Image Updater，配置 Docker Registry 和 Git 凭证"
+echo "=========================================================="
+

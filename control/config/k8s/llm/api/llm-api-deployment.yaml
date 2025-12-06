@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-api
+  namespace: llm
+  labels:
+    app: llm-api
+  annotations:
+    # ArgoCD Image Updater 配置
+    argocd-image-updater.argoproj.io/image-list: llm-api=YOUR_REGISTRY/llm-api
+    argocd-image-updater.argoproj.io/llm-api.update-strategy: semver
+    argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: main
+spec:
+  replicas: 2                           # two replicas for HA
+  selector:
+    matchLabels:
+      app: llm-api
+  template:
+    metadata:
+      labels:
+        app: llm-api
+    spec:
+      nodeSelector:
+        system: "true"
+      containers:
+        - name: llm-api
+          image: your-registry/llm-api:latest   # <-- replace with your actual API image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000       # API server inside container
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1.5"
+              memory: "1536Mi"
+
+          # Common environment variables (optional)
+          env:
+            - name: ROUTER_SERVICE_HOST
+              value: "router-service.llm.svc.cluster.local"
+            - name: ROUTER_SERVICE_PORT
+              value: "80"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: RATE_LIMIT_QPS
+              value: "20"
+
+          # readiness & liveness probes (recommended)
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+

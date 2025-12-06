@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 2                                # Set to 2–3 for HA
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/component: controller
+    spec:
+      nodeSelector:
+        system: "true"
+      serviceAccountName: ingress-nginx
+      containers:
+        - name: controller
+          image: registry.k8s.io/ingress-nginx/controller:v1.11.3
+          imagePullPolicy: IfNotPresent
+          args:
+            - /nginx-ingress-controller
+            - --ingress-class=nginx
+            - --election-id=ingress-nginx-leader
+            - --publish-service=ingress-nginx/ingress-nginx
+          ports:
+            - name: http
+              containerPort: 80       # L7 routing
+              protocol: TCP
+            - name: https
+              containerPort: 443      # TLS termination
+              protocol: TCP
+            - name: healthz
+              containerPort: 10254   # Health check port
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+

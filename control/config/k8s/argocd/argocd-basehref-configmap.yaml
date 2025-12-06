@@ -1,0 +1,21 @@
+# =========================
+# ArgoCD basehref 配置（可选）
+# =========================
+# 注意：如果 ArgoCD 使用路径前缀 /argocd 访问有问题，需要配置此 ConfigMap
+# 
+# 使用说明：
+# 1. 如果访问 http://149.165.147.30/argocd 时页面加载有问题（CSS/JS 路径错误）
+# 2. 应用此 ConfigMap：kubectl apply -f config/k8s/argocd/argocd-basehref-configmap.yaml
+# 3. 重启 ArgoCD server：kubectl rollout restart deployment argocd-server -n argocd
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cmd-params-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  server.basehref: "/argocd"
+

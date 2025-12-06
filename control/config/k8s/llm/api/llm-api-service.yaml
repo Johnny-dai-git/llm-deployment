@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-api-service
+  namespace: llm
+spec:
+  type: ClusterIP
+  selector:
+    app: llm-api
+  ports:
+    - name: http
+      port: 8000         # 或你的 llm-api 监听端口
+      targetPort: 8000
+      protocol: TCP
+

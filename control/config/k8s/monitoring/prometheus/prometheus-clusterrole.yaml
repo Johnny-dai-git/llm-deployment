@@ -1,0 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+rules:
+  # Pod discovery
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs: ["get", "list", "watch"]
+  # Service discovery
+  - apiGroups: [""]
+    resources:
+      - services
+    verbs: ["get", "list", "watch"]
+  # Endpoints discovery
+  - apiGroups: [""]
+    resources:
+      - endpoints
+    verbs: ["get", "list", "watch"]
+  # Node discovery
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs: ["get", "list", "watch"]
+  # Namespace discovery
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs: ["get", "list", "watch"]
+
