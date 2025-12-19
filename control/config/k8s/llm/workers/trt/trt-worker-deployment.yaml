@@ -5,7 +5,7 @@ metadata:
   namespace: llm
   annotations:
     # ArgoCD Image Updater 配置
-    argocd-image-updater.argoproj.io/image-list: trt-worker=YOUR_REGISTRY/trt-worker
+    argocd-image-updater.argoproj.io/image-list: trt-worker=ghcr.io/Johnny-dai-git/llm-deployment/trt-worker
     argocd-image-updater.argoproj.io/trt-worker.update-strategy: semver
     argocd-image-updater.argoproj.io/trt-worker.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
     argocd-image-updater.argoproj.io/write-back-method: git
@@ -24,7 +24,7 @@ spec:
         gpu-node: "true"
       containers:
       - name: trt
-        image: yourrepo/trt-worker:latest
+        image: ghcr.io/Johnny-dai-git/llm-deployment/trt-worker:latest
         ports:
           - containerPort: 8003
             protocol: TCP

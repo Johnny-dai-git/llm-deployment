@@ -1,0 +1,191 @@
+CI/DI
+
+══════════════════════ CI/CD (Continuous Integration & Deployment Plane) ══════════════════════
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                    Developer Local Environment                         │
+│  - llm-api / router / worker source code                               │
+│  - Dockerfile / Kubernetes YAML / Helm                                 │
+│  - Git commit & push                                                   │
+└───────────────────────┬──────────────────────────────────────────────┘
+                            │ Git Push
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                GitHub Actions Runner                                   │
+│   (Self-hosted Runner, running on local machine)                      │
+│  - Unit tests / Integration tests                                     │
+│  - Build Docker images:                                                │
+│      * llm-api                                                         │
+│      * router                                                          │
+│      * bert-worker / vllm-worker / trt-worker                          │
+│  - Tag images with semantic versioning (e.g., v1.2.3)                 │
+│  - Push images to Docker Registry                                     │
+│  (Note: Can be migrated to Kubernetes cluster using Actions Runner Controller)│
+└───────────────────────┬──────────────────────────────────────────────┘
+                            │ Image Push
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    Docker Registry                                     │
+│  your-registry/llm-api                                                 │
+│  your-registry/router                                                  │
+│  your-registry/vllm-worker                                             │
+│  your-registry/trt-worker                                              │
+└───────────────────────┬──────────────────────────────────────────────┘
+                            │ Image Scan
+════════════════════════ ArgoCD Namespace (Control Plane) ══════════════════════
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                ArgoCD Image Updater                                    │
+│  - Periodically scans the registry                                    │
+│  - Matches image tags using semver rules                               │
+│  - Automatically updates image tags in Git (Deployment YAML)          │
+│  - Commit & push changes back to Git                                   │
+└───────────────────────┬──────────────────────────────────────────────┘
+                            │ Git Update
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    Git Repository (GitOps Source of Truth)             │
+│  - All Kubernetes manifests stored in Git                              │
+│  - llm / ingress / router / worker deployments                         │
+│  - Image tags maintained automatically                                 │
+└───────────────────────┬──────────────────────────────────────────────┘
+                            │ Git Diff Detection
+                            ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│              ArgoCD Application Controller                             │
+│  - Monitors Git for desired state changes                              │
+│  - Automatically syncs to Kubernetes cluster                           │
+│  - Health checks and rollback support                                  │
+└───────────────────────┬──────────────────────────────────────────────┘
+                            │ Apply
+════════════════════════ Kubernetes Cluster (Runtime Plane) ══════════════════════
+
+                           ┌─────────────────────────────┐
+                           │        External Clients      │
+                           │  (Browser / Backend / CLI)   │
+                           └──────────────┬──────────────┘
+                                          │  HTTPS
+                                          ▼
+════════════════════════ metallb-system namespace ═══════════════════════════════
+
+                    ┌───────────────────────────────────────────┐
+                    │            MetalLB External IP            │
+                    │   (Stable L4 ingress via BGP / L2 ARP)    │
+                    └───────────────────┬───────────────────────┘
+                                        │
+                                        ▼
+════════════════════════ ingress-nginx namespace ═══════════════════════════════
+
+        ┌────────────────────────────────────────────────────────────────────┐
+        │ Service: ingress-nginx (type=LoadBalancer)                        │
+        │ - External IP assigned by MetalLB                                 │
+        │ - L4 load balancing + first security boundary                     │
+        └───────────────────────┬───────────────────────────────────────────┘
+                                │
+                                ▼
+        ┌────────────────────────────────────────────────────────────────────┐
+        │      Ingress Controller Pods (2–3 replicas, HA)                    │
+        │ - TLS termination                                                  │
+        │ - Host / Path-based L7 routing                                    │
+        │ - Unified entrypoint to llm namespace                             │
+        └───────────────┬────────────────────────────────────────────────────┘
+                        │
+        ┌───────────────┴─────────────────────────┐
+        │                                         │
+        ▼                                         ▼
+
+════════════════════════════ llm namespace (Business Plane) ═════════════════════
+
+   ┌─────────────────────────────┐           ┌───────────────────────────────┐
+   │       llm-web-service       │           │        llm-api-service        │
+   │    (ClusterIP, L4 LB)       │           │    (ClusterIP, API gateway)   │
+   └───────────┬─────────────────┘           └───────────────┬──────────────┘
+               │                                             │
+               ▼                                             ▼
+   ┌─────────────────────────────┐           ┌───────────────────────────────┐
+   │         llm-web Pods        │           │           llm-api Pods        │
+   │ (Static UI / Chat Frontend) │           │ - Auth / rate limit / logging │
+   │                             │           │ - Request validation          │
+   └─────────────────────────────┘           │ - High-level API semantics    │
+                                             └───────────────┬──────────────┘
+                                                             │
+                                                             ▼
+
+════════════════════════ Router (Central Multi-Model Scheduler) ═════════════════
+
+                            ┌───────────────────────────┐
+                            │   router-service (L7 LB)  │
+                            │ - Central multi-model LB   │
+                            │ - Dispatching and routing  │
+                            └─────────────┬─────────────┘
+                                          │
+                        ┌─────────────────┼───────────────────┐
+                        │                 │                   │
+                        ▼                 ▼                   ▼
+
+═══════════ Multi-Model Worker Services (Three Internal L4 Gateways) ════════════
+
+      ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
+      │ bert-worker-service    │ │ vllm-worker-service    │ │ trt-worker-service     │
+      │      (ClusterIP)       │ │      (ClusterIP)       │ │      (ClusterIP)       │
+      │ - BERT / embed / CPU   │ │ - vLLM large-model     │ │ - TensorRT-LLM high    │
+      │   inference            │ │   inference            │ │   throughput inference │
+      └───────────┬────────────┘ └───────────┬────────────┘ └───────────┬────────────┘
+                  │                          │                           │
+                  ▼                          ▼                           ▼
+
+════════════════════ LLM Worker Pods (Actual GPU / CPU Inference) ════════════════
+
+      ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
+      │    BERT Worker Pods    │ │    vLLM Worker Pods    │ │ TensorRT-LLM Pods      │
+      │ - Embeddings / CLS     │ │ - KV Cache / LLM Gen   │ │ - Optimized GPU infer. │
+      │ - CPU or GPU           │ │ - Requires GPU         │ │ - Requires GPU         │
+      └───────────┬────────────┘ └───────────┬────────────┘ └───────────┬────────────┘
+                  │                          │                           │
+                  └──────────────┬───────────┴───────────────┬───────────┘
+                                 │                           │
+                                 ▼                           ▼
+
+════════════════════════════ Storage Layer (Models) ══════════════════════════════
+
+      ┌─────────────────────────────┐                  ┌────────────────────────┐
+      │ Persistent Volume (PVC)     │                  │      Init Container    │
+      │ - Stores large model files  │                  │ - Pull model from S3/  │
+      │ - Mounted at /model path    │                  │   MinIO/GCS            │
+      │                             │                  │ - Preload into worker  │
+      └─────────────────────────────┘                  └────────────────────────┘
+
+
+══════════════════════ Zero-Trust Network Policies (llm ns) ═════════════════════
+
+   - Allow ingress-nginx → llm-api-service  
+   - Allow llm-api Pods → router-service  
+   - Allow router Pods → bert/vllm/trt worker-service  
+   - Default deny for all cross-namespace traffic  
+
+
+══════════════════════════ monitoring namespace (Observability) ══════════════════
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │                             Prometheus                               │
+    │  Scrape Targets:                                                     │
+    │   - llm-web-service.llm.svc:    HTTP RPS / error rate / latency      │
+    │   - llm-api-service.llm.svc:    API QPS / concurrency / error types  │
+    │   - router-service.llm.svc:     queue depth / dispatch latency       │
+    │   - bert/vllm/trt workers:      tokens/sec / throughput / latency    │
+    │   - node-exporter:              CPU / RAM / Disk                     │
+    │   - dcgm-exporter:              GPU util / memory / temp / ECC       │
+    │   - kube-state-metrics:         Pod/Deployment/Node health           │
+    └──────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+                        ┌──────────────────────────┐
+                        │          Grafana         │
+                        │ - API latency p50/p95/p99 │
+                        │ - Error rate / RPS        │
+                        │ - Model TPS / tokens/sec  │
+                        │ - GPU utilization         │
+                        │ - Router queue depth       │
+                        │ - Cluster/node health      │
+                        └──────────────────────────┘
+

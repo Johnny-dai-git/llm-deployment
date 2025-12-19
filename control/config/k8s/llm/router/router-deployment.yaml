@@ -7,7 +7,7 @@ metadata:
     app: router
   annotations:
     # ArgoCD Image Updater 配置
-    argocd-image-updater.argoproj.io/image-list: router=YOUR_REGISTRY/router
+    argocd-image-updater.argoproj.io/image-list: router=ghcr.io/Johnny-dai-git/llm-deployment/router
     argocd-image-updater.argoproj.io/router.update-strategy: semver
     argocd-image-updater.argoproj.io/router.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
     argocd-image-updater.argoproj.io/write-back-method: git
@@ -26,7 +26,7 @@ spec:
         system: "true"
       containers:
         - name: router
-          image: your-registry/router:latest   # <-- replace with your router image
+          image: ghcr.io/Johnny-dai-git/llm-deployment/router:latest
           imagePullPolicy: IfNotPresent
 
           ports:
