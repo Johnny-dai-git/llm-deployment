@@ -1,6 +1,7 @@
 # gateway/gateway.py
 
 import os
+import sys
 import time
 import httpx
 from fastapi import FastAPI, HTTPException, Header
