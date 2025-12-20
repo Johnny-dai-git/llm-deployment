@@ -16,7 +16,6 @@ mkdir -p "$BASE_DIR/base/networkpolicy"
 mkdir -p "$BASE_DIR/llm/web"
 mkdir -p "$BASE_DIR/llm/api"
 mkdir -p "$BASE_DIR/llm/router"
-mkdir -p "$BASE_DIR/llm/workers/bert"
 mkdir -p "$BASE_DIR/llm/workers/vllm"
 mkdir -p "$BASE_DIR/llm/workers/trt"
 mkdir -p "$BASE_DIR/llm/workers/legacy"
@@ -52,10 +51,6 @@ echo "Move files into functional directories ..."
 # ---------- LLM / Router ----------
 [ -f "router-deployment.yaml" ] && mv router-deployment.yaml "$BASE_DIR/llm/router/"
 [ -f "router-service.yaml" ] && mv router-service.yaml "$BASE_DIR/llm/router/"
-
-# ---------- LLM / Workers: BERT ----------
-[ -f "bert-worker-deployment.yaml" ] && mv bert-worker-deployment.yaml "$BASE_DIR/llm/workers/bert/"
-[ -f "bert-worker-service.yaml" ] && mv bert-worker-service.yaml "$BASE_DIR/llm/workers/bert/"
 
 # ---------- LLM / Workers: vLLM ----------
 [ -f "vllm-worker-deployment.yaml" ] && mv vllm-worker-deployment.yaml "$BASE_DIR/llm/workers/vllm/"

@@ -5,6 +5,21 @@ echo "================ Step 1: Apply namespaces ================"
 kubectl apply -f namespaces/
 
 
+echo "================ Step 1.5: Create ghcr-secret ============"
+# 创建 ghcr.io 认证 Secret（用于拉取私有镜像）
+echo ">>> 创建 ghcr-secret（GitHub Container Registry 认证）..."
+if [ -f "config/k8s/llm/secrets/ghcr-secret.yaml" ]; then
+    kubectl apply -f config/k8s/llm/secrets/ghcr-secret.yaml
+    echo "✔ ghcr-secret 已创建"
+    echo ">>> 验证 ghcr-secret 状态："
+    kubectl get secret ghcr-secret -n llm
+    echo "✔ ghcr-secret 验证成功"
+else
+    echo "⚠ 警告: config/k8s/llm/secrets/ghcr-secret.yaml 文件不存在"
+    echo "   请确保已配置 GitHub token 和用户名"
+fi
+
+
 echo "================ Step 2: Label nodes ====================="
 
 CONTROL_NODE="control"
@@ -132,11 +147,16 @@ kubectl get pods -A -o wide
 kubectl get svc -A
 
 echo ""
+echo ">>> 验证关键 Secret 状态："
+kubectl get secret ghcr-secret -n llm || echo "⚠ ghcr-secret 不存在，请检查"
+
+echo ""
 echo "=========================================================="
 echo "🚀 Infrastructure deployed successfully from CONTROL NODE!"
 echo ""
 echo "📋 部署说明："
 echo "   - 基础设施（MetalLB, ingress-nginx, ArgoCD）已部署"
+echo "   - ghcr-secret 已创建，可用于拉取 ghcr.io 私有镜像"
 echo "   - ArgoCD Applications 已创建，将从 Git 仓库同步部署所有服务"
 echo "   - 所有服务（LLM Web/API/Router/Workers/Monitoring）将由 ArgoCD 管理"
 echo ""
@@ -145,6 +165,8 @@ echo "   - Ingress External IP:"
 echo "     kubectl get svc -n ingress-nginx"
 echo "   - ArgoCD Applications 状态:"
 echo "     kubectl get applications -n argocd"
+echo "   - ghcr-secret 状态:"
+echo "     kubectl get secret ghcr-secret -n llm"
 echo "   - ArgoCD UI:"
 echo "     http://149.165.147.30/argocd"
 echo "   - ArgoCD admin password:"
@@ -161,4 +183,3 @@ echo "   1. 确保 Git 仓库包含所有 YAML 文件"
 echo "   2. 在 ArgoCD UI 中检查 Applications 同步状态"
 echo "   3. 如需使用 Image Updater，配置 Docker Registry 和 Git 凭证"
 echo "=========================================================="
-

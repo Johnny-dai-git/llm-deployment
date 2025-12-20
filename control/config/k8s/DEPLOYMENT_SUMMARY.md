@@ -15,7 +15,6 @@
 - **文件**: 所有 Deployment 文件
   - `llm/api/llm-api-deployment.yaml`
   - `llm/router/router-deployment.yaml`
-  - `llm/workers/bert/bert-worker-deployment.yaml`
   - `llm/workers/vllm/vllm-worker-deployment.yaml`
   - `llm/workers/trt/trt-worker-deployment.yaml`
 - **功能**: 自动检测新 Docker image 并更新 Git 仓库
@@ -101,7 +100,6 @@ kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml
 在所有 Deployment 文件中，将 `YOUR_REGISTRY` 替换为实际的 registry 地址：
 - `llm-api-deployment.yaml`
 - `router-deployment.yaml`
-- `bert-worker-deployment.yaml`
 - `vllm-worker-deployment.yaml`
 - `trt-worker-deployment.yaml`
 

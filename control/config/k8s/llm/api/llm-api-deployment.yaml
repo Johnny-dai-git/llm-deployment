@@ -7,7 +7,7 @@ metadata:
     app: llm-api
   annotations:
     # ArgoCD Image Updater 配置
-    argocd-image-updater.argoproj.io/image-list: llm-api=YOUR_REGISTRY/llm-api
+    argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/Johnny-dai-git/llm-deployment/gateway
     argocd-image-updater.argoproj.io/llm-api.update-strategy: semver
     argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
     argocd-image-updater.argoproj.io/write-back-method: git
@@ -22,11 +22,13 @@ spec:
       labels:
         app: llm-api
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       nodeSelector:
         system: "true"
       containers:
         - name: llm-api
-          image: your-registry/llm-api:latest   # <-- replace with your actual API image
+          image: ghcr.io/Johnny-dai-git/llm-deployment/gateway:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000       # API server inside container

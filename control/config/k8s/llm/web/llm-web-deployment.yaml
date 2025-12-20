@@ -5,6 +5,13 @@ metadata:
   namespace: llm
   labels:
     app: llm-web
+  annotations:
+    # ArgoCD Image Updater 配置
+    argocd-image-updater.argoproj.io/image-list: web=ghcr.io/Johnny-dai-git/llm-deployment/web
+    argocd-image-updater.argoproj.io/web.update-strategy: semver
+    argocd-image-updater.argoproj.io/web.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 2                 # Two replicas for HA
   selector:
@@ -15,12 +22,13 @@ spec:
       labels:
         app: llm-web
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       nodeSelector:
         system: "true"
       containers:
         - name: llm-web
-          # Replace with your real web image (React / Vue / static HTML / Nginx)
-          image: nginx:1.25-alpine
+          image: ghcr.io/Johnny-dai-git/llm-deployment/web:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

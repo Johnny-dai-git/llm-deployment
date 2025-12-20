@@ -3,6 +3,13 @@ kind: Deployment
 metadata:
   name: llm-gateway
   namespace: llm
+  annotations:
+    # ArgoCD Image Updater 配置
+    argocd-image-updater.argoproj.io/image-list: gateway=ghcr.io/Johnny-dai-git/llm-deployment/gateway
+    argocd-image-updater.argoproj.io/gateway.update-strategy: semver
+    argocd-image-updater.argoproj.io/gateway.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 1
   selector:
@@ -13,11 +20,13 @@ spec:
       labels:
         app: llm-gateway
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       nodeSelector:
-        role: system
+        system: "true"
       containers:
       - name: llm-gateway
-        image: johnnycwru/llm-gateway:0.1
+        image: ghcr.io/Johnny-dai-git/llm-deployment/gateway:latest
         ports:
         - containerPort: 8000
         env:

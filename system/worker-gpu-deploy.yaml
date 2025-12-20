@@ -3,6 +3,13 @@ kind: Deployment
 metadata:
   name: llm-worker
   namespace: llm
+  annotations:
+    # ArgoCD Image Updater 配置
+    argocd-image-updater.argoproj.io/image-list: vllm-worker=ghcr.io/Johnny-dai-git/llm-deployment/vllm-worker
+    argocd-image-updater.argoproj.io/vllm-worker.update-strategy: semver
+    argocd-image-updater.argoproj.io/vllm-worker.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 1
   selector:
@@ -13,15 +20,13 @@ spec:
       labels:
         app: llm-worker
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       nodeSelector:
-        role: gpu
-      tolerations:
-      - key: "gpu"
-        operator: "Exists"
-        effect: "NoSchedule"
+        gpu-node: "true"
       containers:
       - name: llm-worker
-        image: johnnycwru/llm-worker-gpu:0.1
+        image: ghcr.io/Johnny-dai-git/llm-deployment/vllm-worker:latest
         ports:
         - containerPort: 8002
         resources:
