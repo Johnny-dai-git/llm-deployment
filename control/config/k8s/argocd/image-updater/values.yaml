@@ -1,0 +1,51 @@
+# =========================
+# ArgoCD Image Updater Helm Chart Values
+# =========================
+# 用于通过 Helm 安装和配置 ArgoCD Image Updater
+
+# Image Updater 配置
+config:
+  # ArgoCD 连接配置（Image Updater 需要连接到 ArgoCD）
+  argocd:
+    serverAddress: "argocd-server.argocd.svc.cluster.local:443"
+    grpcWeb: true
+    insecure: false
+    plaintext: false
+
+  # Git 写回配置
+  git:
+    commitUser: "Johnny-dai-git"
+    commitMail: "johnny-dai-git@users.noreply.github.com"
+    commitMessageTemplate: |
+      build: update {{.AppName}} image {{.ImageName}} to {{.NewTag}}
+      
+      [skip ci]
+  
+  # Registry 配置
+  registries:
+    - name: GitHub Container Registry
+      api_url: https://ghcr.io
+      prefix: ghcr.io
+      credentials: pullsecret:argocd/docker-registry-secret#.dockerconfigjson
+      default: true
+      insecure: false
+
+  # 日志级别
+  logLevel: info
+
+# 更新间隔（默认 2 分钟）
+interval: 2m
+
+# 资源限制
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# 注意：
+# - Git credentials Secret (git-credentials) 需要在安装前创建
+# - Docker registry Secret (docker-registry-secret) 需要在安装前创建
+# - Deployment annotations 中需要引用: git:secret:argocd/git-credentials

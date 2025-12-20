@@ -118,27 +118,61 @@ echo ">>> ArgoCD UI: http://149.165.147.30/argocd (access after Ingress takes ef
 
 
 echo "================ Step 6: Install ArgoCD Image Updater ==================="
-# Step 6.1: Install ArgoCD Image Updater
-echo ">>> Installing ArgoCD Image Updater..."
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+# Step 6.1: Create required Secrets before installing Image Updater
+echo ">>> Creating Docker Registry Secret..."
+if [ -f "config/k8s/argocd/image-updater/docker-registry-secret.yaml" ]; then
+    kubectl apply -f config/k8s/argocd/image-updater/docker-registry-secret.yaml
+    echo "✔ Docker Registry Secret created"
+else
+    echo "⚠ Warning: docker-registry-secret.yaml not found, Image Updater may not be able to pull private images"
+fi
 
-# Step 6.2: Wait for Image Updater to be ready
+echo ">>> Creating Git Credentials Secret..."
+if [ -f "config/k8s/argocd/image-updater/git-credentials-secret.yaml" ]; then
+    kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml
+    echo "✔ Git Credentials Secret created"
+else
+    echo "⚠ Warning: git-credentials-secret.yaml not found, Image Updater may not be able to write back to Git"
+fi
+
+# Step 6.2: Add Argo Helm repository
+echo ">>> Adding Argo Helm repository..."
+helm repo add argo https://argoproj.github.io/argo-helm 2>/dev/null || echo "⚠ Helm repo may already exist"
+helm repo update
+
+# Step 6.3: Install ArgoCD Image Updater using Helm
+echo ">>> Installing ArgoCD Image Updater using Helm..."
+if [ -f "config/k8s/argocd/image-updater/values.yaml" ]; then
+    helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+      -n argocd \
+      --create-namespace \
+      -f config/k8s/argocd/image-updater/values.yaml
+    echo "✔ Image Updater installed with custom values"
+else
+    helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+      -n argocd \
+      --create-namespace
+    echo "✔ Image Updater installed with default values"
+fi
+
+# Step 6.4: Wait for Image Updater to be ready
 echo ">>> Waiting for ArgoCD Image Updater to be ready..."
-sleep 10
+kubectl wait --for=condition=available --timeout=120s deployment/argocd-image-updater -n argocd 2>/dev/null || \
+  echo "⚠ Image Updater may not be ready yet, continuing..."
 
-# Step 6.3: Check status
+# Step 6.5: Check status
 echo ">>> Checking ArgoCD Image Updater status..."
 kubectl get pods -n argocd | grep image-updater || echo "⚠ Image Updater may not be ready yet"
 
-# Step 6.4: Prompt to configure Secret (if needed)
+# Step 6.6: Display configuration info
 echo ""
-echo ">>> 📝 Note: If you need to use Image Updater, configure the following Secrets:"
-echo "   1. Docker Registry authentication (if private registry is needed):"
-echo "      kubectl apply -f config/k8s/argocd/image-updater/docker-registry-secret.yaml"
-echo "   2. Git write-back credentials (Image Updater needs to write back to Git):"
-echo "      kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml"
-echo "   3. Image Updater annotations have been added to Deployment (placeholder)"
-echo "      Please modify YOUR_REGISTRY in Deployment to the actual registry address"
+echo ">>> 📝 Image Updater Configuration:"
+echo "   - Installed via Helm chart (argo/argocd-image-updater)"
+echo "   - Docker Registry Secret: docker-registry-secret (for pulling private images)"
+echo "   - Git Credentials Secret: git-credentials (for writing back to Git)"
+echo "   - Update interval: 2 minutes (default)"
+echo "   - Annotations are in Deployment YAML files in Git (the only source of truth)"
+echo "   - Reference: config/k8s/argocd/image-updater/deployment-example.yaml"
 
 
 echo "================ Step 7: Check Status ==================="

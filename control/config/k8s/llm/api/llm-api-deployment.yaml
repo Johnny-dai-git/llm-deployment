@@ -8,9 +8,9 @@ metadata:
   annotations:
     # ArgoCD Image Updater configuration
     argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway
-    argocd-image-updater.argoproj.io/llm-api.update-strategy: semver
-    argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
-    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/llm-api.update-strategy: name
+    argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
+    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 2                           # two replicas for HA

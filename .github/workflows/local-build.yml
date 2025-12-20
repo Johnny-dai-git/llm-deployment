@@ -3,7 +3,7 @@ name: Build and Push Docker Images
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # 允许手动触发
 
 env:
   REGISTRY: ghcr.io
@@ -15,13 +15,20 @@ jobs:
     
     permissions:
       contents: read
-      packages: write  # This permission is required to push to ghcr.io
+      packages: write  # 推送到 ghcr.io 需要此权限
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history needed to detect file changes
+          fetch-depth: 0  # 需要完整历史来检测文件变化
+
+      - name: Generate timestamp version
+        id: timestamp
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          echo "VERSION=v-${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "Generated version: v-${TIMESTAMP}"
 
       - name: Detect changed services
         uses: dorny/paths-filter@v2
@@ -56,8 +63,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/gateway
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
+            type=raw,value=${{ steps.timestamp.outputs.VERSION }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push gateway image
@@ -77,8 +83,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/router
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
+            type=raw,value=${{ steps.timestamp.outputs.VERSION }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push router image
@@ -98,8 +103,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/vllm-worker
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
+            type=raw,value=${{ steps.timestamp.outputs.VERSION }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push vllm-worker image
@@ -119,8 +123,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/trt-worker
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
+            type=raw,value=${{ steps.timestamp.outputs.VERSION }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push trt-worker image
@@ -140,8 +143,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/web
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
+            type=raw,value=${{ steps.timestamp.outputs.VERSION }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push web image
