@@ -5,7 +5,7 @@ metadata:
   namespace: llm
   annotations:
     # ArgoCD Image Updater configuration
-    argocd-image-updater.argoproj.io/image-list: vllm-worker=ghcr.io/Johnny-dai-git/llm-deployment/vllm-worker
+    argocd-image-updater.argoproj.io/image-list: vllm-worker=ghcr.io/johnny-dai-git/llm-deployment/vllm-worker
     argocd-image-updater.argoproj.io/vllm-worker.update-strategy: semver
     argocd-image-updater.argoproj.io/vllm-worker.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
     argocd-image-updater.argoproj.io/write-back-method: git
@@ -26,7 +26,7 @@ spec:
         gpu-node: "true"
       containers:
       - name: llm-worker
-        image: ghcr.io/Johnny-dai-git/llm-deployment/vllm-worker:latest
+        image: ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest
         ports:
         - containerPort: 8002
         resources:

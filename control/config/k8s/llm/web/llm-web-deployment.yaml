@@ -7,7 +7,7 @@ metadata:
     app: llm-web
   annotations:
     # ArgoCD Image Updater configuration
-    argocd-image-updater.argoproj.io/image-list: web=ghcr.io/Johnny-dai-git/llm-deployment/web
+    argocd-image-updater.argoproj.io/image-list: web=ghcr.io/johnny-dai-git/llm-deployment/web
     argocd-image-updater.argoproj.io/web.update-strategy: semver
     argocd-image-updater.argoproj.io/web.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
     argocd-image-updater.argoproj.io/write-back-method: git
@@ -28,7 +28,7 @@ spec:
         system: "true"
       containers:
         - name: llm-web
-          image: ghcr.io/Johnny-dai-git/llm-deployment/web:latest
+          image: ghcr.io/johnny-dai-git/llm-deployment/web:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

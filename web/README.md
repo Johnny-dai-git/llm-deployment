@@ -24,7 +24,7 @@ web/
 After modifying files, commit to Git, the workflow will automatically:
 1. Detect changes in `web/**` 目录的变化
 2. Build Docker image
-3. Push to `ghcr.io/Johnny-dai-git/llm-deployment/web:latest`
+3. Push to `ghcr.io/johnny-dai-git/llm-deployment/web:latest`
 4. Kubernetes will automatically pull the new image and update deployment
 
 ## Local Testing

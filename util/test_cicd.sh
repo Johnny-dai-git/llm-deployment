@@ -116,7 +116,7 @@ for dep_info in "${DEPLOYMENTS[@]}"; do
         print_result "pass" "$(basename $dep_file) exists"
         
         # Check image path
-        if grep -q "ghcr.io/Johnny-dai-git/llm-deployment" "$dep_file"; then
+        if grep -q "ghcr.io/johnny-dai-git/llm-deployment" "$dep_file"; then
             print_result "pass" "  Image path configured correctly"
         else
             print_result "fail" "  Image path not configured correctly"
@@ -253,12 +253,12 @@ echo "     ${CYAN}https://github.com/Johnny-dai-git?tab=packages${NC}"
 echo ""
 echo "  2. Verify these images exist:"
 for img in "${IMAGES[@]}"; do
-    echo "     • ghcr.io/Johnny-dai-git/llm-deployment/$img"
+    echo "     • ghcr.io/johnny-dai-git/llm-deployment/$img"
 done
 echo ""
 echo "  3. Test image pull (if Docker is installed):"
-echo "     ${CYAN}echo 'ghp_YOUR_TOKEN' | docker login ghcr.io -u Johnny-dai-git --password-stdin${NC}"
-echo "     ${CYAN}docker pull ghcr.io/Johnny-dai-git/llm-deployment/gateway:latest${NC}"
+echo "     ${CYAN}echo 'ghp_YOUR_TOKEN' | docker login ghcr.io -u johnny-dai-git --password-stdin${NC}"
+echo "     ${CYAN}docker pull ghcr.io/johnny-dai-git/llm-deployment/gateway:latest${NC}"
 echo ""
 
 echo -e "${BLUE}Step 3:${NC} Test Kubernetes Deployment (if cluster is ready)"

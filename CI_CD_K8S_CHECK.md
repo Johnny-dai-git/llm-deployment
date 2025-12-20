@@ -3,32 +3,32 @@
 ## ✅ Matched Configurations
 
 ### 1. Gateway / LLM-API
-- **CI Build**: `ghcr.io/Johnny-dai-git/llm-deployment/gateway`
-- **K8s Usage**: `ghcr.io/Johnny-dai-git/llm-deployment/gateway:latest` ✅
+- **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/gateway`
+- **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/gateway:latest` ✅
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 2. Router
-- **CI Build**: `ghcr.io/Johnny-dai-git/llm-deployment/router`
-- **K8s Usage**: `ghcr.io/Johnny-dai-git/llm-deployment/router:latest` ✅
+- **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/router`
+- **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/router:latest` ✅
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 3. VLLM Worker
-- **CI Build**: `ghcr.io/Johnny-dai-git/llm-deployment/vllm-worker`
-- **K8s Usage**: `ghcr.io/Johnny-dai-git/llm-deployment/vllm-worker:latest` ✅
+- **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/vllm-worker`
+- **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest` ✅
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 4. TRT Worker
-- **CI Build**: `ghcr.io/Johnny-dai-git/llm-deployment/trt-worker`
-- **K8s Usage**: `ghcr.io/Johnny-dai-git/llm-deployment/trt-worker:latest` ✅
+- **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/trt-worker`
+- **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/trt-worker:latest` ✅
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 5. Web
-- **CI Build**: `ghcr.io/Johnny-dai-git/llm-deployment/web`
-- **K8s Usage**: `ghcr.io/Johnny-dai-git/llm-deployment/web:latest` ✅
+- **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/web`
+- **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/web:latest` ✅
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ✅ Configured
 
@@ -38,19 +38,19 @@
 These files appear to be old versions or backup configurations:
 
 #### gateway-deploy.yaml
-- **Image**: ✅ `ghcr.io/Johnny-dai-git/llm-deployment/gateway:latest`
+- **Image**: ✅ `ghcr.io/johnny-dai-git/llm-deployment/gateway:latest`
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ❌ Missing
 - **nodeSelector**: ⚠️ Using `role: system`(should use `system: "true"`）
 
 #### router-deploy.yaml
-- **Image**: ✅ `ghcr.io/Johnny-dai-git/llm-deployment/router:latest`
+- **Image**: ✅ `ghcr.io/johnny-dai-git/llm-deployment/router:latest`
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ❌ Missing
 - **nodeSelector**: ⚠️ Using `role: system`(should use `system: "true"`）
 
 #### worker-gpu-deploy.yaml
-- **Image**: ✅ `ghcr.io/Johnny-dai-git/llm-deployment/vllm-worker:latest`
+- **Image**: ✅ `ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest`
 - **imagePullSecrets**: ✅ Configured
 - **ArgoCD Image Updater**: ❌ Missing
 - **nodeSelector**: ⚠️ Using `role: gpu`(should use `gpu-node: "true"`）

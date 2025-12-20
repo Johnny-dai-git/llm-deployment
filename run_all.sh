@@ -13,7 +13,7 @@ GPU_NODES=("149.165.147.25" "149.165.147.81")  # GPU worker 节点
 
 # GitHub repository configuration
 GITHUB_USERNAME="Johnny-dai-git"
-GITHUB_TOKEN="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"
+GITHUB_TOKEN="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"
 GITHUB_REPO="llm-deployment"
 GITHUB_BRANCH="main"
 GITHUB_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
