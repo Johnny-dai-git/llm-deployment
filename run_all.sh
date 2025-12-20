@@ -11,9 +11,16 @@ CONTROL_IP="149.165.150.232"     # control 节点
 SYSTEM_NODES=("149.165.147.30")  # system 节点
 GPU_NODES=("149.165.147.25" "149.165.147.81")  # GPU worker 节点
 
-LOCAL_INSTALL_DIR="/home/johnnydai/桌面/apps/fine-tune/hcc-jetsream2-VLLM1-Deployment/llm-serving/install"
+# GitHub repository configuration
+GITHUB_USERNAME="Johnny-dai-git"
+GITHUB_TOKEN="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"
+GITHUB_REPO="llm-deployment"
+GITHUB_BRANCH="main"
+GITHUB_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+
 REMOTE_HOME="/home/${REMOTE_USER}"
-REMOTE_INSTALL_DIR="${REMOTE_HOME}/install"
+REMOTE_REPO_DIR="${REMOTE_HOME}/llm-deployment"
+REMOTE_INSTALL_DIR="${REMOTE_REPO_DIR}/install"
 
 SSH_KEY="$HOME/.ssh/id_ed25519.pub"
 
@@ -40,34 +47,48 @@ for IP in "${ALL_NODES[@]}"; do
   fi
 done
 
-
 # ================================================================
-# Phase 1: SCP install 目录上去
+# Phase 0.5: 确保所有节点已安装 git
 # ================================================================
 echo
-echo "===== Phase 1: SCP install/ 到所有节点 ====="
-
-# 修改 metallb-ip-pool.yaml，使用 system node IP
-METALLB_YAML="control/config/k8s/base/metallb/metallb-ip-pool.yaml"
-SYSTEM_NODE_IP=${SYSTEM_NODES[0]}
-if [ -f "$METALLB_YAML" ]; then
-  echo ">>> 修改 metallb-ip-pool.yaml 使用 system node IP: $SYSTEM_NODE_IP ..."
-  # 替换占位符为实际的 system node IP
-  sed -i "s/PUBLIC_IP/${SYSTEM_NODE_IP}/" "$METALLB_YAML"
-  echo "✔ 已修改 metallb-ip-pool.yaml"
-fi
+echo "===== Phase 0.5: 确保所有节点已安装 git ====="
 
 for IP in "${ALL_NODES[@]}"; do
-  echo ">>> [SCP] 拷贝 install 到 $IP ..."
-  ssh ${REMOTE_USER}@${IP} "mkdir -p ${REMOTE_HOME}"
-  scp -r "$LOCAL_INSTALL_DIR" "${REMOTE_USER}@${IP}:${REMOTE_HOME}/"
+  echo ">>> [git] 检查节点 $IP 是否已安装 git..."
+  ssh ${REMOTE_USER}@${IP} "which git || (sudo apt update && sudo apt install -y git)"
 done
 
-# SCP control/config 目录到 control node（包含修改后的 metallb-ip-pool.yaml）
-echo ">>> [SCP] 拷贝 control/config 到 control node ..."
-ssh ${REMOTE_USER}@${CONTROL_IP} "mkdir -p ${REMOTE_HOME}"
-scp -r "control/config" "${REMOTE_USER}@${CONTROL_IP}:${REMOTE_HOME}/"
+# ================================================================
+# Phase 1: 在所有节点上 clone GitHub 仓库
+# ================================================================
+echo
+echo "===== Phase 1: 在所有节点上 clone GitHub 仓库 ====="
 
+SYSTEM_NODE_IP=${SYSTEM_NODES[0]}
+
+for IP in "${ALL_NODES[@]}"; do
+  echo ">>> [Git] 在节点 $IP 上 clone 仓库..."
+  
+  ssh ${REMOTE_USER}@${IP} << EOF
+    cd ${REMOTE_HOME}
+    if [ -d "${REMOTE_REPO_DIR}" ]; then
+      echo "  Repository already exists, pulling latest changes..."
+      cd ${REMOTE_REPO_DIR}
+      git pull origin ${GITHUB_BRANCH} || echo "⚠ Git pull failed, continuing..."
+    else
+      echo "  Cloning repository..."
+      git clone -b ${GITHUB_BRANCH} ${GITHUB_URL} ${REMOTE_REPO_DIR}
+    fi
+EOF
+
+  # 修改 metallb-ip-pool.yaml，使用 system node IP（仅在 control 节点）
+  if [ "$IP" == "$CONTROL_IP" ]; then
+    echo ">>> 修改 metallb-ip-pool.yaml 使用 system node IP: $SYSTEM_NODE_IP ..."
+    ssh ${REMOTE_USER}@${IP} "cd ${REMOTE_REPO_DIR} && \
+      sed -i 's/PUBLIC_IP/${SYSTEM_NODE_IP}/' control/config/k8s/base/metallb/metallb-ip-pool.yaml && \
+      echo '✔ Modified metallb-ip-pool.yaml'"
+  fi
+done
 
 # ================================================================
 # Phase 2: 所有节点执行 all_install.sh
@@ -79,7 +100,6 @@ for IP in "${ALL_NODES[@]}"; do
   echo ">>> [all_install] 在 $IP 上执行 ..."
   ssh ${REMOTE_USER}@${IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash all_install.sh"
 done
-
 
 # ================================================================
 # Phase 3: control 节点执行 control.sh
@@ -95,7 +115,6 @@ ssh ${REMOTE_USER}@${CONTROL_IP} "cd ${REMOTE_INSTALL_DIR} && \
 # 执行 control.sh
 ssh ${REMOTE_USER}@${CONTROL_IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash control.sh"
 
-
 # ================================================================
 # Phase 4: 获取 join 命令
 # ================================================================
@@ -110,7 +129,6 @@ fi
 
 echo "✔ 获取到 JOIN_CMD:"
 echo "   $JOIN_CMD"
-
 
 # ================================================================
 # Phase 5: system / GPU 节点做初始化（不 join）
@@ -129,7 +147,6 @@ for IP in "${GPU_NODES[@]}"; do
   echo ">>> [gpu worker] 在 $IP 上执行 gpu_worker.sh ..."
   ssh ${REMOTE_USER}@${IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash gpu_worker.sh"
 done
-
 
 # ================================================================
 # Phase 6: 统一 join 所有非-control 节点
@@ -156,7 +173,8 @@ echo
 echo "🎉🎉🎉 全部节点已经加入 Kubernetes 集群！"
 echo "👉 回到 control 节点运行："
 echo "     ssh ${REMOTE_USER}@${CONTROL_IP}"
-echo "     kubectl get nodes"
+echo "     cd ${REMOTE_REPO_DIR}/control"
+echo "     bash run_control"
 echo ""
 echo "如果你需要下一步部署 vLLM / Triton / Dynamo，我也可以帮你一键化！"
 
@@ -182,4 +200,3 @@ for IP in "${GPU_NODES[@]}"; do
 done
 
 echo "===== 所有节点的终端已打开！====="
-
