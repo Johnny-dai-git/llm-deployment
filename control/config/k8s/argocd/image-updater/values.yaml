@@ -5,6 +5,9 @@
 
 # Image Updater 配置
 config:
+  # Application API 类型：使用 ArgoCD API
+  applicationsAPIKind: "argocd"
+
   # ArgoCD 连接配置（Image Updater 需要连接到 ArgoCD）
   argocd:
     serverAddress: "argocd-server.argocd.svc.cluster.local:443"
@@ -12,14 +15,13 @@ config:
     insecure: false
     plaintext: false
 
-  # Git 写回配置
-  git:
-    commitUser: "Johnny-dai-git"
-    commitMail: "johnny-dai-git@users.noreply.github.com"
-    commitMessageTemplate: |
-      build: update {{.AppName}} image {{.ImageName}} to {{.NewTag}}
-      
-      [skip ci]
+  # Git 写回配置（使用扁平格式，符合 Helm chart 要求）
+  gitCommitUser: "Johnny-dai-git"
+  gitCommitMail: "johnny-dai-git@users.noreply.github.com"
+  gitCommitMessageTemplate: |
+    build: update {{.AppName}} image {{.ImageName}} to {{.NewTag}}
+    
+    [skip ci]
   
   # Registry 配置
   registries:
@@ -49,4 +51,3 @@ resources:
 # - Git credentials Secret (git-credentials) 需要在安装前创建
 # - Docker registry Secret (docker-registry-secret) 需要在安装前创建
 # - Deployment annotations 中需要引用: git:secret:argocd/git-credentials
-
