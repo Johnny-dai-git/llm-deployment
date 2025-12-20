@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -120,13 +120,13 @@
     <div class="container">
         <div class="header">
             <h1>🤖 LLM Chat Interface</h1>
-            <p>与 AI 模型对话</p>
+            <p>Chat with AI Model</p>
         </div>
         
         <div class="chat-area" id="chatArea">
             <div class="message assistant">
                 <div class="message-content">
-                    你好！我是 AI 助手，有什么可以帮助你的吗？
+                    Hello! I am an AI assistant, how can I help you?
                 </div>
             </div>
         </div>
@@ -135,10 +135,10 @@
             <input 
                 type="text" 
                 id="messageInput" 
-                placeholder="输入你的消息..."
+                placeholder="Type your message..."
                 onkeypress="if(event.key === 'Enter') sendMessage()"
             >
-            <button id="sendButton" onclick="sendMessage()">发送</button>
+            <button id="sendButton" onclick="sendMessage()">Send</button>
         </div>
     </div>
 
@@ -152,19 +152,19 @@
             
             if (!message) return;
             
-            // 禁用输入
+            // Disable input
             input.disabled = true;
             button.disabled = true;
             
-            // 显示用户消息
+            // Display user message
             addMessage('user', message);
             input.value = '';
             
-            // 显示加载中
-            const loadingId = addMessage('assistant', '正在思考...');
+            // Display loading
+            const loadingId = addMessage('assistant', 'Thinking...');
             
             try {
-                // 调用 API
+                // Call API
                 const response = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
                     method: 'POST',
                     headers: {
@@ -181,20 +181,20 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`API 错误: ${response.status}`);
+                    throw new Error(`API Error: ${response.status}`);
                 }
                 
                 const data = await response.json();
-                const assistantMessage = data.choices[0]?.message?.content || '抱歉，没有收到回复。';
+                const assistantMessage = data.choices[0]?.message?.content || 'Sorry, no response received.';
                 
-                // 更新消息
+                // Update message
                 updateMessage(loadingId, assistantMessage);
                 
             } catch (error) {
                 console.error('Error:', error);
-                updateMessage(loadingId, `错误: ${error.message}`);
+                updateMessage(loadingId, `Error: ${error.message}`);
             } finally {
-                // 恢复输入
+                // Restore input
                 input.disabled = false;
                 button.disabled = false;
                 input.focus();

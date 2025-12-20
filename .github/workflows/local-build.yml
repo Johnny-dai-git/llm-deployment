@@ -3,7 +3,7 @@ name: Build and Push Docker Images
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:  # Allow manual trigger
 
 env:
   REGISTRY: ghcr.io
@@ -15,13 +15,13 @@ jobs:
     
     permissions:
       contents: read
-      packages: write  # 推送到 ghcr.io 需要此权限
+      packages: write  # This permission is required to push to ghcr.io
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 需要完整历史来检测文件变化
+          fetch-depth: 0  # Full history needed to detect file changes
 
       - name: Detect changed services
         uses: dorny/paths-filter@v2

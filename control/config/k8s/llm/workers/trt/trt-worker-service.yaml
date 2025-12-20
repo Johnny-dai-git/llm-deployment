@@ -10,6 +10,6 @@ spec:
   ports:
     - name: http
       port: 8003
-      targetPort: 8003   # TRT-LLM server 的端口，例如 triton=8000/8001/8002
+      targetPort: 8003   # TRT-LLM server port, e.g. triton=8000/8001/8002
       protocol: TCP
 

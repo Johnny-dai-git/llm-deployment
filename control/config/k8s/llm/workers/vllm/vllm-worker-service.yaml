@@ -10,6 +10,6 @@ spec:
   ports:
     - name: http
       port: 8002
-      targetPort: 8002    # vLLM 的推理 HTTP 端口（可改为 8000/8080）
+      targetPort: 8002    # vLLM inference HTTP port (can be changed to 8000/8080)
       protocol: TCP
 

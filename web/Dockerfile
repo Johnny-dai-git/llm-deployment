@@ -1,15 +1,15 @@
-# 基于 nginx 的 Web 前端镜像
-# 你可以在这个目录下修改 HTML/CSS/JS 文件
+# Web frontend image based on nginx
+# You can modify HTML/CSS/JS files in this directory
 
 FROM nginx:1.25-alpine
 
-# 复制自定义的 nginx 配置（如果需要）
+# Copy custom nginx configuration (if needed)
 # COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# 复制静态文件到 nginx 默认目录
+# Copy static files to nginx default directory
 COPY . /usr/share/nginx/html/
 
-# 暴露端口
+# Expose port
 EXPOSE 80
 
-# nginx 会自动启动，无需 CMD
+# nginx starts automatically, no CMD needed

@@ -21,7 +21,7 @@ metadata:
     app: llm-api
   annotations:
     # ============================================
-    # ArgoCD Image Updater 配置
+    # ArgoCD Image Updater configuration
     # ============================================
     
     # 指定要监控的 image 列表
