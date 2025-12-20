@@ -49,3 +49,4 @@ resources:
 # - Git credentials Secret (git-credentials) 需要在安装前创建
 # - Docker registry Secret (docker-registry-secret) 需要在安装前创建
 # - Deployment annotations 中需要引用: git:secret:argocd/git-credentials
+
