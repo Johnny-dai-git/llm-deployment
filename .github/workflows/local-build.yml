@@ -7,7 +7,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/llm-deployment
+  # Force lowercase to match Deployment annotations (johnny-dai-git, not Johnny-dai-git)
+  IMAGE_PREFIX: johnny-dai-git/llm-deployment
 
 jobs:
   build-and-push:
