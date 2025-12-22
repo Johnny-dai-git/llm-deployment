@@ -7,6 +7,7 @@ metadata:
     app: llm-api
   annotations:
     # ArgoCD Image Updater configuration
+    # 注意：image-list 中的别名是 llm-api，但实际使用的镜像名称是 gateway
     argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway
     argocd-image-updater.argoproj.io/llm-api.update-strategy: name
     argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
@@ -14,6 +15,11 @@ metadata:
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 2                           # two replicas for HA
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: llm-api
@@ -21,17 +27,46 @@ spec:
     metadata:
       labels:
         app: llm-api
+      annotations:
+        # Prometheus scraping annotations
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       imagePullSecrets:
         - name: ghcr-secret
       nodeSelector:
         system: "true"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - llm-api
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: llm-api
           image: ghcr.io/johnny-dai-git/llm-deployment/gateway:latest
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+              - ALL
           ports:
-            - containerPort: 8000       # API server inside container
+            - name: http
+              containerPort: 8000       # API server inside container
               protocol: TCP
 
           resources:
@@ -60,6 +95,7 @@ spec:
               port: 8000
             initialDelaySeconds: 3
             periodSeconds: 5
+            timeoutSeconds: 3
 
           livenessProbe:
             httpGet:
@@ -67,4 +103,4 @@ spec:
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
-
+            timeoutSeconds: 3

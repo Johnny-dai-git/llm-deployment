@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: llm-api-service
   namespace: llm
+  labels:
+    app: llm-api
 spec:
   type: ClusterIP
   selector:

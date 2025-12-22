@@ -4,8 +4,6 @@ metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
-    # 使用 nginx ingress class
-    kubernetes.io/ingress.class: nginx
     # ArgoCD 需要 gRPC 支持
     nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
     # 不强制 SSL 重定向（如果使用 HTTP）

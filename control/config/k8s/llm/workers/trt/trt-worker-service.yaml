@@ -3,13 +3,14 @@ kind: Service
 metadata:
   name: trt-worker-service
   namespace: llm
+  labels:
+    app: trt-worker
 spec:
+  type: ClusterIP
   selector:
     app: trt-worker
-  type: ClusterIP
   ports:
     - name: http
       port: 8003
       targetPort: 8003   # TRT-LLM server port, e.g. triton=8000/8001/8002
       protocol: TCP
-

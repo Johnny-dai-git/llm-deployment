@@ -1,0 +1,23 @@
+# =========================
+# Grafana PersistentVolumeClaim
+# =========================
+# 用于持久化存储 Grafana 的配置、仪表板和用户数据
+# 注意：请根据你的集群 StorageClass 调整 storageClassName
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi  # Example 环境，仅需少量存储
+  # 如果集群有默认 StorageClass，可以注释掉下面这行
+  # 如果没有默认 StorageClass，需要指定一个
+  # storageClassName: standard  # 根据你的集群实际情况修改
+

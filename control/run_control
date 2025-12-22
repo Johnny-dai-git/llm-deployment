@@ -142,17 +142,21 @@ helm repo update
 
 # Step 6.3: Install ArgoCD Image Updater using Helm
 echo ">>> Installing ArgoCD Image Updater using Helm..."
+# 固定 Helm chart 版本以确保一致性
+ARGOCD_IMAGE_UPDATER_CHART_VERSION="0.10.0"  # 请根据实际需要更新版本号
 if [ -f "config/k8s/argocd/image-updater/values.yaml" ]; then
     helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+      --version "${ARGOCD_IMAGE_UPDATER_CHART_VERSION}" \
       -n argocd \
       --create-namespace \
       -f config/k8s/argocd/image-updater/values.yaml
-    echo "✔ Image Updater installed with custom values"
+    echo "✔ Image Updater installed with custom values (version: ${ARGOCD_IMAGE_UPDATER_CHART_VERSION})"
 else
     helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+      --version "${ARGOCD_IMAGE_UPDATER_CHART_VERSION}" \
       -n argocd \
       --create-namespace
-    echo "✔ Image Updater installed with default values"
+    echo "✔ Image Updater installed with default values (version: ${ARGOCD_IMAGE_UPDATER_CHART_VERSION})"
 fi
 
 # Step 6.4: Wait for Image Updater to be ready

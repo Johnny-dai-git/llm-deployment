@@ -28,7 +28,7 @@ mkdir -p "$BASE_DIR/monitoring/exporters"
 echo "Move files into functional directories ..."
 
 # ---------- Base / Namespaces ----------
-[ -f "namesapce.yaml" ] && mv namesapce.yaml "$BASE_DIR/base/namespaces/"
+[ -f "namespace.yaml" ] && mv namespace.yaml "$BASE_DIR/base/namespaces/"
 
 # ---------- Base / MetalLB ----------
 [ -f "generate_metallb_ip.sh" ] && mv generate_metallb_ip.sh "$BASE_DIR/base/metallb/"

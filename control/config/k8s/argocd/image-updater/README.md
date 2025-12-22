@@ -19,10 +19,18 @@ ArgoCD Image Updater 可以自动监控 Docker registry 中的新 image，并自
 ### Step 1: 安装 ArgoCD Image Updater
 
 ```bash
-# 运行安装脚本
-bash control/config/k8s/argocd/image-updater/install-image-updater.sh
+# 通过 run_control 脚本安装（推荐）
+# 脚本会自动安装 ArgoCD Image Updater 并配置所有必要的 Secret
 
-# 或手动安装
+# 或手动安装（使用 Helm）
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+  -n argocd \
+  --create-namespace \
+  -f control/config/k8s/argocd/image-updater/values.yaml
+
+# 或使用原始 manifest 安装
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
 ```
 
@@ -36,16 +44,10 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argoc
 kubectl apply -f control/config/k8s/argocd/image-updater/docker-registry-secret.yaml
 ```
 
-**占位符需要修改：**
-- `YOUR_REGISTRY_URL`: 你的 registry 地址（如 `docker.io`, `ghcr.io`）
-- `YOUR_USERNAME`: registry 用户名
-- `YOUR_PASSWORD`: registry 密码或 token
-- `BASE64_ENCODED_USERNAME:PASSWORD`: base64 编码的用户名:密码
-
-**生成 base64 编码：**
-```bash
-echo -n 'username:password' | base64
-```
+**注意：**
+- 如果 Secret 文件已包含实际配置，则无需修改
+- 如果需要修改，请编辑 `docker-registry-secret.yaml` 文件
+- Secret 类型为 `kubernetes.io/dockerconfigjson`，格式为标准的 Docker config JSON
 
 ### Step 3: 配置 Git 写回凭证
 
@@ -57,12 +59,12 @@ Image Updater 需要写回 Git 仓库，需要配置 Git 凭证：
 kubectl apply -f control/config/k8s/argocd/image-updater/git-credentials-secret.yaml
 ```
 
-**占位符需要修改：**
-- `YOUR_GITHUB_USERNAME`: GitHub 用户名
-- `YOUR_GITHUB_TOKEN`: GitHub Personal Access Token（需要 repo 写权限）
-- `YOUR_EMAIL@example.com`: 用于 Git commit 的邮箱
+**注意：**
+- 如果 Secret 文件已包含实际配置，则无需修改
+- 如果需要修改，请编辑 `git-credentials-secret.yaml` 文件
+- Secret 包含 `username` 和 `password` 字段（password 为 GitHub Personal Access Token）
 
-**创建 GitHub Token：**
+**创建 GitHub Token（如果需要）：**
 1. GitHub -> Settings -> Developer settings -> Personal access tokens -> Tokens (classic)
 2. Generate new token (classic)
 3. 选择权限：`repo`（完整仓库访问）
@@ -81,43 +83,82 @@ metadata:
   name: llm-api
   namespace: llm
   annotations:
-    argocd-image-updater.argoproj.io/image-list: llm-api=your-registry/llm-api
-    argocd-image-updater.argoproj.io/llm-api.update-strategy: semver
-    argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
-    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway
+    argocd-image-updater.argoproj.io/llm-api.update-strategy: name
+    argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
+    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
     argocd-image-updater.argoproj.io/git-branch: main
 ```
 
 ## 文件说明
 
-- `install-image-updater.sh`: 安装脚本
-- `docker-registry-secret.yaml`: Docker registry 认证 Secret 模板
-- `git-credentials-secret.yaml`: Git 写回凭证 Secret 模板
+- `values.yaml`: Helm chart 配置文件（用于通过 Helm 安装）
+- `docker-registry-secret.yaml`: Docker registry 认证 Secret（用于 Image Updater 拉取镜像元数据）
+- `git-credentials-secret.yaml`: Git 写回凭证 Secret（用于 Image Updater 写回 Git 仓库）
 - `deployment-example.yaml`: Deployment 配置示例（带 Image Updater annotations）
+- `validate-config.sh`: 配置验证脚本（验证配置文件是否正确）
+- `test-integration.sh`: 集成测试脚本（测试 Image Updater 是否能正常工作）
 - `README.md`: 本文件
 
 ## 更新策略
 
-### semver（推荐）
+### name（当前使用）
+- 按名称排序，选择最新的
+- 适用于自定义命名规则（如时间戳格式：`v-20240101-120000`）
+- 当前部署使用此策略，tag 模式：`^v-[0-9]{8}-[0-9]{6}$`
+
+### semver（推荐用于语义化版本）
 - 匹配语义化版本号：`v1.2.3`, `1.2.3`, `v1.2.3-beta`
 - 总是选择最新的版本号
-- 适用于生产环境
+- 适用于使用语义化版本号的环境
+- tag 模式示例：`^v?[0-9]+\.[0-9]+\.[0-9]+$`
 
 ### latest
 - 总是使用 `latest` tag
-- 简单但不推荐用于生产
-
-### name
-- 按名称排序，选择最新的
-- 适用于自定义命名规则
+- 简单但不推荐用于生产环境
 
 ### digest
 - 使用 image digest（SHA256）
 - 最安全但需要手动触发更新
 
-## 验证
+## 验证和测试
 
-安装完成后，检查 Image Updater 状态：
+### 配置验证
+
+在部署前，验证配置文件是否正确：
+
+```bash
+# 运行配置验证脚本
+bash control/config/k8s/argocd/image-updater/validate-config.sh
+```
+
+此脚本会检查：
+- Helm values.yaml 配置完整性
+- Secret 文件格式和内容
+- Deployment 示例配置
+- 实际 Deployment 文件中的 annotations
+- YAML 语法正确性
+
+### 集成测试
+
+部署后，测试 Image Updater 是否能正常工作：
+
+```bash
+# 运行集成测试脚本
+bash control/config/k8s/argocd/image-updater/test-integration.sh
+```
+
+此脚本会检查：
+- Image Updater Deployment 状态
+- Pod 运行状态
+- 必要的 Secret 是否存在
+- Image Updater 日志
+- ArgoCD Applications 配置
+- Registry 连通性
+
+### 手动验证
+
+安装完成后，也可以手动检查 Image Updater 状态：
 
 ```bash
 # 检查 Pod 状态

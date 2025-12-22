@@ -3,13 +3,14 @@ kind: Service
 metadata:
   name: vllm-worker-service
   namespace: llm
+  labels:
+    app: vllm-worker
 spec:
+  type: ClusterIP
   selector:
     app: vllm-worker
-  type: ClusterIP
   ports:
     - name: http
       port: 8002
       targetPort: 8002    # vLLM inference HTTP port (can be changed to 8000/8080)
       protocol: TCP
-

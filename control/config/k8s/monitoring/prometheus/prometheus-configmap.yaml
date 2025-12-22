@@ -3,10 +3,14 @@ kind: ConfigMap
 metadata:
   name: prometheus-config
   namespace: monitoring
+  labels:
+    app: prometheus
 data:
   prometheus.yml: |
     global:
       scrape_interval: 5s
+      scrape_timeout: 5s
+      evaluation_interval: 15s
 
     scrape_configs:
 
@@ -15,9 +19,27 @@ data:
       static_configs:
         - targets: ["kube-state-metrics.monitoring.svc:8080"]
 
+    # node-exporter 使用 hostNetwork，需要通过节点发现来抓取
+    # 因为 hostNetwork: true，每个节点上的 node-exporter 绑定到节点的 9100 端口
     - job_name: "node-exporter"
-      static_configs:
-        - targets: ["node-exporter.monitoring.svc:9100"]
+      kubernetes_sd_configs:
+        - role: node
+      relabel_configs:
+        # 使用节点名称作为 instance 标签
+        - source_labels: [__meta_kubernetes_node_name]
+          action: replace
+          target_label: instance
+        # 将地址从 kubelet 端口 (10250) 改为 node-exporter 端口 (9100)
+        # __address__ 默认是 InternalIP:10250，我们需要改为 InternalIP:9100
+        - source_labels: [__address__]
+          action: replace
+          regex: ([^:]+):\d+
+          replacement: ${1}:9100
+          target_label: __address__
+        # 设置 metrics 路径
+        - action: replace
+          target_label: __metrics_path__
+          replacement: /metrics
 
     - job_name: "dcgm-exporter"
       static_configs:

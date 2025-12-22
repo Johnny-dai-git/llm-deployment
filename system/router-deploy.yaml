@@ -27,6 +27,7 @@ spec:
       containers:
       - name: llm-router
         image: ghcr.io/johnny-dai-git/llm-deployment/router:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8001
         env:

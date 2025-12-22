@@ -27,6 +27,7 @@ spec:
       containers:
       - name: llm-gateway
         image: ghcr.io/johnny-dai-git/llm-deployment/gateway:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
         env:

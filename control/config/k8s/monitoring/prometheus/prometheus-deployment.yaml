@@ -3,8 +3,15 @@ kind: Deployment
 metadata:
   name: prometheus
   namespace: monitoring
+  labels:
+    app: prometheus
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: prometheus
@@ -13,12 +20,24 @@ spec:
       labels:
         app: prometheus
     spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
       serviceAccountName: prometheus
       nodeSelector:
         control: "true"
       containers:
         - name: prometheus
-          image: prom/prometheus:latest
+          # 固定版本，避免意外更新
+          image: prom/prometheus:v2.48.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+              - ALL
           ports:
             - name: http
               containerPort: 9090
@@ -46,11 +65,20 @@ spec:
               memory: "4Gi"
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"  # 数据存储路径
+            - "--storage.tsdb.retention.time=1h"  # 数据保留1小时（Example 环境）
+            - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+            - "--web.console.templates=/usr/share/prometheus/consoles"
           volumeMounts:
             - mountPath: /etc/prometheus/
               name: prometheus-config
+            - mountPath: /prometheus  # Prometheus 数据目录
+              name: prometheus-data
       volumes:
         - name: prometheus-config
           configMap:
             name: prometheus-config
-
+        - name: prometheus-data
+          hostPath:
+            path: /data/prometheus
+            type: DirectoryOrCreate

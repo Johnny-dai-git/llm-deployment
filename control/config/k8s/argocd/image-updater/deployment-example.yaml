@@ -33,19 +33,22 @@ metadata:
     # 更新策略：semver（语义化版本）, latest, name, digest
     # semver: 匹配语义化版本号（如 v1.2.3）
     # latest: 总是使用最新的 tag
-    # name: 按名称排序选择最新的
+    # name: 按名称排序选择最新的（实际部署使用此策略）
     # digest: 使用 image digest
-    argocd-image-updater.argoproj.io/llm-api.update-strategy: semver
+    argocd-image-updater.argoproj.io/llm-api.update-strategy: name
     
     # 允许的 tag 模式（正则表达式）
     # 只更新匹配此模式的 tag
-    argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    # 示例1: 语义化版本号模式
+    # argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v?[0-9]+\.[0-9]+\.[0-9]+$
+    # 示例2: 时间戳模式（实际部署使用此模式）
+    argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
     
     # 忽略的 tag 模式（可选）
     # argocd-image-updater.argoproj.io/llm-api.ignore-tags: regexp:^.*-dev$
     
-    # 写回 Git 的方法
-    argocd-image-updater.argoproj.io/write-back-method: git
+    # 写回 Git 的方法（必须包含 secret 引用）
+    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
     
     # Git 分支
     argocd-image-updater.argoproj.io/git-branch: main
@@ -53,10 +56,8 @@ metadata:
     # Git commit 消息模板（可选）
     # argocd-image-updater.argoproj.io/write-back-commit-message: "chore: update {{.AppName}} image to {{.NewTag}}"
     
-    # 检查新 image 的间隔（可选，默认 2 分钟）
-    # argocd-image-updater.argoproj.io/llm-api.pull-secret: pullsecret:argocd/docker-registry-secret#.dockerconfigjson
-    
-    # 如果使用私有 registry，需要指定 pull secret
+    # 如果使用私有 registry，需要指定 pull secret（用于 Image Updater 拉取镜像元数据）
+    # 注意：这与 Deployment 中的 imagePullSecrets 不同
     # argocd-image-updater.argoproj.io/llm-api.pull-secret: pullsecret:argocd/docker-registry-secret#.dockerconfigjson
 
 spec:
@@ -69,6 +70,9 @@ spec:
       labels:
         app: llm-api
     spec:
+      # 如果使用私有 registry，需要配置 imagePullSecrets
+      imagePullSecrets:
+        - name: ghcr-secret  # 替换为你的 registry secret 名称
       nodeSelector:
         system: "true"
       containers:
@@ -105,7 +109,7 @@ spec:
 #     
 #     argocd-image-updater.argoproj.io/worker.update-strategy: latest
 #     
-#     argocd-image-updater.argoproj.io/write-back-method: git
+#     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
 #     argocd-image-updater.argoproj.io/git-branch: main
 # spec:
 #   template:

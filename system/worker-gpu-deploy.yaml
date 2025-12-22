@@ -27,6 +27,7 @@ spec:
       containers:
       - name: llm-worker
         image: ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8002
         resources:

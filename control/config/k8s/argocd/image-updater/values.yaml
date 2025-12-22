@@ -10,44 +10,110 @@ config:
 
   # ArgoCD 连接配置（Image Updater 需要连接到 ArgoCD）
   argocd:
-    serverAddress: "argocd-server.argocd.svc.cluster.local:443"
+    # ArgoCD 服务器地址（服务名，不包含端口和协议）
+    serverAddress: "argocd-server.argocd.svc.cluster.local"
+    # ArgoCD 服务器端口
+    port: 443
+    # ArgoCD 服务器协议（https 或 http）
+    scheme: https
     grpcWeb: true
     insecure: false
     plaintext: false
 
-  # Git 写回配置（使用扁平格式，符合 Helm chart 要求）
+  # 更新间隔（默认 2 分钟）
+  interval: 2m
+
+  # 日志配置
+  logLevel: info
+  logFormat: text
+
+  # 健康检查端口
+  healthPort: 8080
+
+  # Metrics 端口
+  metricsPort: 8080
+
+  # Git 写回配置（扁平化格式，符合 Helm chart 要求）
+  # 写回方法：git（通过 Git 仓库写回）
+  writeBackMethod: git
+  # Git commit 用户信息
   gitCommitUser: "Johnny-dai-git"
-  gitCommitMail: "johnny-dai-git@users.noreply.github.com"
-  gitCommitMessageTemplate: |
-    build: update {{.AppName}} image {{.ImageName}} to {{.NewTag}}
-    
-    [skip ci]
-  
+  gitCommitEmail: "johnny-dai-git@users.noreply.github.com"
+  # Git 分支
+  gitBranch: "main"
+  # Git commit 消息模板
+  gitCommitMessage: "build: update {{.AppName}} image {{.ImageName}} to {{.NewTag}}\n\n[skip ci]"
+  # 注意：Git credentials 通过 Deployment annotations 中的 write-back-method 指定
+  # 格式：git:secret:argocd/git-credentials
+
   # Registry 配置
   registries:
     - name: GitHub Container Registry
       api_url: https://ghcr.io
       prefix: ghcr.io
+      # credentials 格式：pullsecret:namespace/secret-name#key
+      # 这是 ArgoCD Image Updater 支持的标准格式
       credentials: pullsecret:argocd/docker-registry-secret#.dockerconfigjson
       default: true
       insecure: false
 
-  # 日志级别
-  logLevel: info
+# 副本数（高可用性）
+replicaCount: 2
 
-# 更新间隔（默认 2 分钟）
-interval: 2m
+# ServiceAccount 配置
+serviceAccount:
+  # 如果设置为空字符串，则使用默认的 ServiceAccount
+  # 如果需要自定义 ServiceAccount，请取消注释并设置名称
+  # name: argocd-image-updater
+  # 是否自动挂载 ServiceAccount token
+  automountServiceAccountToken: true
+
+# Pod 调度配置
+nodeSelector: {}
+# 示例：
+# nodeSelector:
+#   kubernetes.io/os: linux
+
+tolerations: []
+# 示例：
+# tolerations:
+#   - key: "node-role.kubernetes.io/master"
+#     operator: "Exists"
+#     effect: "NoSchedule"
+
+affinity: {}
+# 示例：Pod 反亲和性，确保 Pod 分布在不同节点
+# affinity:
+#   podAntiAffinity:
+#     preferredDuringSchedulingIgnoredDuringExecution:
+#       - weight: 100
+#         podAffinityTerm:
+#           labelSelector:
+#             matchExpressions:
+#               - key: app.kubernetes.io/name
+#                 operator: In
+#                 values:
+#                   - argocd-image-updater
+#           topologyKey: kubernetes.io/hostname
 
 # 资源限制
 resources:
   limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
     cpu: 100m
     memory: 128Mi
-  requests:
-    cpu: 50m
-    memory: 64Mi
 
-# 注意：
+# 环境变量配置（可选）
+extraEnv: []
+# 示例：
+# extraEnv:
+#   - name: LOG_LEVEL
+#     value: "debug"
+
+# 配置说明：
 # - Git credentials Secret (git-credentials) 需要在安装前创建
 # - Docker registry Secret (docker-registry-secret) 需要在安装前创建
 # - Deployment annotations 中需要引用: git:secret:argocd/git-credentials
+# - 所有配置格式已根据官方 Helm chart 格式修复

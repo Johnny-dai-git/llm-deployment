@@ -14,6 +14,11 @@ metadata:
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 2                 # Two replicas for HA
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: llm-web
@@ -21,17 +26,47 @@ spec:
     metadata:
       labels:
         app: llm-web
+      annotations:
+        # Prometheus scraping annotations
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
     spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       imagePullSecrets:
         - name: ghcr-secret
       nodeSelector:
         system: "true"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - llm-web
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: llm-web
           image: ghcr.io/johnny-dai-git/llm-deployment/web:latest
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+              - ALL
           ports:
-            - containerPort: 80
+            - name: http
+              containerPort: 80
+              protocol: TCP
           readinessProbe:
             httpGet:
               path: /
@@ -62,4 +97,3 @@ spec:
       #   - name: web-content
       #     configMap:
       #       name: llm-web-static-files
-

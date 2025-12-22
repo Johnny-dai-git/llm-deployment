@@ -14,6 +14,11 @@ metadata:
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 2                      # High availability
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: router
@@ -21,18 +26,47 @@ spec:
     metadata:
       labels:
         app: router
+      annotations:
+        # Prometheus scraping annotations
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9000"
+        prometheus.io/path: "/metrics"
     spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       imagePullSecrets:
         - name: ghcr-secret
       nodeSelector:
         system: "true"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - router
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: router
           image: ghcr.io/johnny-dai-git/llm-deployment/router:latest
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+              - ALL
 
           ports:
-            - containerPort: 9000              # Router internal HTTP server
+            - name: http
+              containerPort: 9000              # Router internal HTTP server
               protocol: TCP
 
           env:
@@ -64,6 +98,7 @@ spec:
               port: 9000
             initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 3
 
           # Detect router crash (especially in multi-thread scenarios)
           livenessProbe:
@@ -72,6 +107,7 @@ spec:
               port: 9000
             initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 3
 
           # Router is CPU-bound (API routing), no GPU needed
           resources:
@@ -81,4 +117,3 @@ spec:
             limits:
               cpu: "2"
               memory: "1Gi"
-

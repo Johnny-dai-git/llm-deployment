@@ -3,23 +3,47 @@ kind: DaemonSet
 metadata:
   name: node-exporter
   namespace: monitoring
+  labels:
+    app: node-exporter
 spec:
   selector:
     matchLabels:
       app: node-exporter
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
   template:
     metadata:
       labels:
         app: node-exporter
     spec:
-      nodeSelector:
-        control: "true"
+      # 移除 nodeSelector，让 node-exporter 在所有节点上运行
+      # node-exporter 应该监控所有节点，而不仅仅是 control 节点
       hostNetwork: true
       containers:
       - name: node-exporter
-        image: prom/node-exporter:latest
+        # 固定版本，避免意外更新
+        image: prom/node-exporter:v1.7.0
         ports:
-        - containerPort: 9100
+        - name: http
+          containerPort: 9100
+          protocol: TCP
+        # 健康检查
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9100
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 9100
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 3
         resources:
           requests:
             cpu: "50m"
@@ -27,4 +51,3 @@ spec:
           limits:
             cpu: "100m"
             memory: "128Mi"
-

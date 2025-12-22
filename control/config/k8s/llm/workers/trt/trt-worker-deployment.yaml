@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: trt-worker
   namespace: llm
+  labels:
+    app: trt-worker
   annotations:
     # ArgoCD Image Updater configuration
     argocd-image-updater.argoproj.io/image-list: trt-worker=ghcr.io/johnny-dai-git/llm-deployment/trt-worker
@@ -12,6 +14,11 @@ metadata:
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: trt-worker
@@ -19,7 +26,17 @@ spec:
     metadata:
       labels:
         app: trt-worker
+      annotations:
+        # Prometheus scraping annotations
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8003"
+        prometheus.io/path: "/metrics"
     spec:
+      terminationGracePeriodSeconds: 120
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0
+        fsGroup: 0
       imagePullSecrets:
         - name: ghcr-secret
       nodeSelector:
@@ -27,9 +44,25 @@ spec:
       containers:
       - name: trt
         image: ghcr.io/johnny-dai-git/llm-deployment/trt-worker:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
         ports:
-          - containerPort: 8003
+          - name: http
+            containerPort: 8003
             protocol: TCP
+        startupProbe:
+          httpGet:
+            path: /v2/health/ready
+            port: 8003
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
         readinessProbe:
           httpGet:
             path: /v2/health/ready
@@ -47,9 +80,11 @@ spec:
         resources:
           requests:
             nvidia.com/gpu: 4
+            cpu: "2"
             memory: "16Gi"
           limits:
             nvidia.com/gpu: 4
+            cpu: "4"
             memory: "16Gi"
         args:
           - "--engine"
@@ -62,4 +97,3 @@ spec:
         hostPath:
           path: /media/models/trt
           type: Directory
-
