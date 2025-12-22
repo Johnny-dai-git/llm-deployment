@@ -16,6 +16,6 @@ data:
         isDefault: true
         editable: true
         jsonData:
-          timeInterval: "5s"
           httpMethod: POST
+          queryTimeout: "60s"
 

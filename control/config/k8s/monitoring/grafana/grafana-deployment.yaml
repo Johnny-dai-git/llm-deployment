@@ -31,6 +31,7 @@ spec:
         - name: grafana
           # 固定版本，避免意外更新
           image: grafana/grafana:10.2.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -94,6 +95,5 @@ spec:
           configMap:
             name: grafana-datasource
         - name: grafana-data
-          hostPath:
-            path: /data/grafana
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: grafana-data

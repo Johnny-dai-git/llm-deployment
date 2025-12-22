@@ -57,17 +57,22 @@ data:
         - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
           action: keep
           regex: true
-        # 使用 annotation 指定的端口替换 __address__ 中的端口
+        # 使用 annotation 指定的端口替换 __address__ 中的端口（如果annotation存在）
         - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
           action: replace
-          regex: ([^:]+)(?::\d+)?;(\d+)
+          regex: ([^:]+)(?::\d+)?;(.+)
           replacement: $1:$2
           target_label: __address__
-        # 使用 annotation 指定的 metrics 路径，默认 /metrics
+        # 先设置默认 metrics 路径为 /metrics
+        - action: replace
+          target_label: __metrics_path__
+          replacement: /metrics
+        # 如果 annotation 存在，使用 annotation 指定的路径覆盖默认值
         - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
           action: replace
           target_label: __metrics_path__
           regex: (.+)
+          replacement: ${1}
         # 添加 Pod 标签到 metrics
         - action: labelmap
           regex: __meta_kubernetes_pod_label_(.+)

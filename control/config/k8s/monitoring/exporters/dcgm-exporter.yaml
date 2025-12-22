@@ -32,6 +32,7 @@ spec:
         # 固定版本，避免意外更新
         # 注意：根据你的 CUDA 版本选择合适的 dcgm-exporter 版本
         image: nvidia/dcgm-exporter:3.3.5-3.2.0-ubuntu22.04
+        imagePullPolicy: IfNotPresent
         ports:
         - name: http
           containerPort: 9400

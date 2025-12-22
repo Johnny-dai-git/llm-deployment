@@ -25,6 +25,7 @@ spec:
       - name: node-exporter
         # 固定版本，避免意外更新
         image: prom/node-exporter:v1.7.0
+        imagePullPolicy: IfNotPresent
         ports:
         - name: http
           containerPort: 9100
@@ -32,14 +33,14 @@ spec:
         # 健康检查
         readinessProbe:
           httpGet:
-            path: /
+            path: /metrics
             port: 9100
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 3
         livenessProbe:
           httpGet:
-            path: /
+            path: /metrics
             port: 9100
           initialDelaySeconds: 30
           periodSeconds: 30

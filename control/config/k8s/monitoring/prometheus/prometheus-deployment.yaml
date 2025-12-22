@@ -32,6 +32,7 @@ spec:
         - name: prometheus
           # 固定版本，避免意外更新
           image: prom/prometheus:v2.48.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
@@ -70,7 +71,7 @@ spec:
             - "--web.console.libraries=/usr/share/prometheus/console_libraries"
             - "--web.console.templates=/usr/share/prometheus/consoles"
           volumeMounts:
-            - mountPath: /etc/prometheus/
+            - mountPath: /etc/prometheus
               name: prometheus-config
             - mountPath: /prometheus  # Prometheus 数据目录
               name: prometheus-data
@@ -79,6 +80,5 @@ spec:
           configMap:
             name: prometheus-config
         - name: prometheus-data
-          hostPath:
-            path: /data/prometheus
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: prometheus-data
