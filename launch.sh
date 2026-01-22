@@ -95,7 +95,43 @@ kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/confi
 echo ">>> Waiting for MetalLB components to be ready..."
 sleep 10
 
-# Step 3.3: Patch controller resources
+# Step 3.3: Wait for MetalLB webhook to be ready (critical for CR validation)
+echo ">>> Waiting for MetalLB webhook to be ready..."
+WEBHOOK_READY=false
+MAX_WAIT=120  # 最多等待 120 秒
+WAIT_COUNT=0
+while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+  # 检查 controller deployment 是否就绪（webhook 是 controller 的一部分）
+  CONTROLLER_READY=$(kubectl get deployment controller -n metallb-system -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "False")
+  
+  # 检查 webhook service 的 endpoint 是否存在且有地址
+  ENDPOINT_IP=$(kubectl get endpoints -n metallb-system metallb-webhook-service -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null || echo "")
+  
+  # 检查 validatingwebhookconfiguration 是否存在
+  WEBHOOK_CONFIG_EXISTS=$(kubectl get validatingwebhookconfiguration metallb-webhook-configuration -o jsonpath='{.metadata.name}' 2>/dev/null || echo "")
+  
+  if [ "$CONTROLLER_READY" = "True" ] && [ -n "$ENDPOINT_IP" ] && [ -n "$WEBHOOK_CONFIG_EXISTS" ]; then
+    # 额外检查：确保 endpoint 确实指向了 pod
+    ENDPOINT_PORT=$(kubectl get endpoints -n metallb-system metallb-webhook-service -o jsonpath='{.subsets[0].ports[0].port}' 2>/dev/null || echo "")
+    if [ -n "$ENDPOINT_PORT" ]; then
+      WEBHOOK_READY=true
+      echo "✔ MetalLB webhook is ready (controller: $CONTROLLER_READY, endpoint: $ENDPOINT_IP:$ENDPOINT_PORT)"
+      break
+    fi
+  fi
+  
+  WAIT_COUNT=$((WAIT_COUNT + 5))
+  echo "   Waiting for webhook... (${WAIT_COUNT}s/${MAX_WAIT}s)"
+  sleep 5
+done
+
+if [ "$WEBHOOK_READY" = "false" ]; then
+  echo "⚠ Warning: MetalLB webhook may not be fully ready, but continuing..."
+  echo "   If IP pool creation fails, wait a bit longer and retry manually"
+  echo "   You can check webhook status with: kubectl get pods,svc,endpoints -n metallb-system"
+fi
+
+# Step 3.4: Patch controller resources
 echo ">>> Configuring MetalLB controller resources..."
 kubectl -n metallb-system patch deployment controller \
   --type='json' \
@@ -105,7 +141,7 @@ kubectl -n metallb-system patch deployment controller \
               "limits":{"cpu":"300m","memory":"512Mi"}}}
   ]' || echo "⚠ Controller may not be ready yet, manual patch required later"
 
-# Step 3.4: Patch speaker resources
+# Step 3.5: Patch speaker resources
 echo ">>> Configuring MetalLB speaker resources..."
 kubectl -n metallb-system patch daemonset speaker \
   --type='json' \
@@ -115,9 +151,42 @@ kubectl -n metallb-system patch daemonset speaker \
               "limits":{"cpu":"200m","memory":"256Mi"}}}
   ]' || echo "⚠ Speaker may not be ready yet, manual patch required later"
 
-# Step 3.5: Apply MetalLB IP pool configuration
+# Step 3.6: Apply MetalLB IP pool configuration (with retry logic)
 echo ">>> Applying MetalLB IP pool configuration..."
-kubectl apply -f config/k8s/base/metallb/metallb-ip-pool.yaml
+RETRY_COUNT=0
+MAX_RETRIES=3
+IP_POOL_APPLIED=false
+
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  # 尝试应用配置，捕获错误输出
+  APPLY_OUTPUT=$(kubectl apply -f config/k8s/base/metallb/metallb-ip-pool.yaml 2>&1)
+  APPLY_EXIT_CODE=$?
+  
+  if [ $APPLY_EXIT_CODE -eq 0 ]; then
+    IP_POOL_APPLIED=true
+    echo "✔ MetalLB IP pool configuration applied successfully"
+    break
+  else
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    # 检查是否是 webhook 连接错误
+    if echo "$APPLY_OUTPUT" | grep -q "connection refused\|failed calling webhook"; then
+      if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+        echo "   ⚠ Webhook not ready yet, retry ${RETRY_COUNT}/${MAX_RETRIES}: Waiting 5 more seconds..."
+        sleep 5
+      else
+        echo "   ❌ Failed to apply IP pool after ${MAX_RETRIES} attempts (webhook still not ready)"
+        echo "   Error: $APPLY_OUTPUT"
+        echo "   Please wait a bit longer and retry manually:"
+        echo "   kubectl apply -f config/k8s/base/metallb/metallb-ip-pool.yaml"
+      fi
+    else
+      # 其他类型的错误，直接显示并退出
+      echo "   ❌ Failed to apply IP pool configuration:"
+      echo "   $APPLY_OUTPUT"
+      break
+    fi
+  fi
+done
 
 kubectl get configmap -n metallb-system || true
 
