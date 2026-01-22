@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: llm
+
+resources:
+  # API services
+  - api/llm-api-deployment.yaml
+  - api/llm-api-service.yaml
+  
+  # Router services
+  - router/router-deployment.yaml
+  - router/router-service.yaml
+  
+  # Web frontend
+  - web/llm-web-deployment.yaml
+  - web/llm-web-service.yaml
+  
+  # Workers
+  - workers/vllm/vllm-worker-deployment.yaml
+  - workers/vllm/vllm-worker-service.yaml
+  - workers/trt/trt-worker-deployment.yaml
+  - workers/trt/trt-worker-service.yaml
+  
+  # Ingress
+  - ingress/llm-ingress.yaml
+  
+  # Secrets
+  - secrets/ghcr-secret.yaml
