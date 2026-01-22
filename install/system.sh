@@ -123,6 +123,9 @@ hard_reset_all() {
 # =========================
 # kubeadm init + kubeconfig
 # =========================
+# =========================
+# kubeadm init + kubeconfig
+# =========================
 kubeadm_init() {
   local master_ip="$1"
   log ">>> kubeadm init (node=${NODE_NAME}, endpoint=${master_ip})"
@@ -136,14 +139,15 @@ setup_kubeconfig_root() {
   log ">>> 配置 kubectl（root）"
   mkdir -p /root/.kube
   cp -f /etc/kubernetes/admin.conf /root/.kube/config
+  export KUBECONFIG=/root/.kube/config
 }
 
 remove_controlplane_taint() {
   log ">>> Ensure control-plane taint removed (single-node cluster)"
-
   kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- 2>/dev/null || true
   kubectl taint nodes --all node-role.kubernetes.io/master:NoSchedule- 2>/dev/null || true
 }
+
 
 
 setup_kubeconfig_user() {
