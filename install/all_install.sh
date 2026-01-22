@@ -64,15 +64,27 @@ sudo apt-mark hold kubelet kubeadm kubectl
 ##############################################
 if [ "$IS_GPU_NODE" -eq 0 ]; then
     echo "[4/5] CPU 节点：安装 containerd"
-    sudo apt install -y containerd
+    if ! command -v containerd &> /dev/null; then
+        sudo apt install -y containerd
+    else
+        echo "➡ containerd 已安装，跳过安装步骤"
+    fi
 
     echo "➡ 配置 systemd cgroup（K8s 推荐）"
     sudo mkdir -p /etc/containerd
     containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
     sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
     sudo systemctl restart containerd
+    sudo systemctl enable containerd
 else
     echo "[4/5] GPU 节点：跳过 containerd 安装（我们使用 Docker + NVIDIA）"
+    # 如果 containerd 已安装，停止并禁用它（GPU 节点使用 Docker）
+    if command -v containerd &> /dev/null; then
+        echo "➡ 检测到 containerd 已安装，停止并禁用服务（GPU 节点使用 Docker）"
+        sudo systemctl stop containerd 2>/dev/null || true
+        sudo systemctl disable containerd 2>/dev/null || true
+        echo "  ✓ containerd 已停止并禁用"
+    fi
 fi
 
 ##############################################
