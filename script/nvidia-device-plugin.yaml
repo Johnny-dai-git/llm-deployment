@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: nvidia-device-plugin-ds
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
+    spec:
+      priorityClassName: system-node-critical
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+
+      volumes:
+        # kubelet device plugin socket
+        - name: device-plugin
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+
+        # NVIDIA userspace libraries (NVML 在这里)
+        - name: nvidia-lib
+          hostPath:
+            path: /usr/lib/x86_64-linux-gnu
+            type: Directory
+
+        # NVIDIA device nodes
+        - name: nvidia-dev
+          hostPath:
+            path: /dev
+            type: Directory
+
+      containers:
+        - name: nvidia-device-plugin-ctr
+          image: nvcr.io/nvidia/k8s-device-plugin:v0.15.0
+          imagePullPolicy: IfNotPresent
+
+          env:
+            - name: FAIL_ON_INIT_ERROR
+              value: "false"
+
+          securityContext:
+            privileged: true
+
+          volumeMounts:
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+
+            - name: nvidia-lib
+              mountPath: /usr/lib/x86_64-linux-gnu
+              readOnly: true
+
+            - name: nvidia-dev
+              mountPath: /dev
+
+      restartPolicy: Always

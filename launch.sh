@@ -64,6 +64,23 @@ sudo bash system.sh
 echo
 echo "===== Phase 4: 部署基础设施（ingress-nginx, ArgoCD）====="
 
+# Step 0: Install NVIDIA Device Plugin
+echo "================ Step 0: Install NVIDIA Device Plugin ==================="
+
+if [ -f "${REPO_DIR}/nvidia-device-plugin.yaml" ]; then
+  kubectl apply -f "${REPO_DIR}/nvidia-device-plugin.yaml"
+elif [ -f "${REPO_DIR}/script/nvidia-device-plugin.yaml" ]; then
+  kubectl apply -f "${REPO_DIR}/script/nvidia-device-plugin.yaml"
+else
+  echo "❌ nvidia-device-plugin.yaml not found in repo root or script/ directory"
+  exit 1
+fi
+
+echo ">>> Waiting for NVIDIA device plugin to register GPU..."
+sleep 5
+kubectl describe node system | grep -A4 nvidia.com/gpu || \
+  echo "⚠ GPU not visible yet, continue and check later"
+
 # 切换到 control 目录（因为 run_control 的路径是相对于 control 目录的）
 cd "${CONTROL_DIR}"
 
