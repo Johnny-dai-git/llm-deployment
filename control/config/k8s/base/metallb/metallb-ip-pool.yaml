@@ -5,7 +5,10 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - VIRTUAL_IP/32   # system node 的公网 IP
+    # TODO: Configure your MetalLB IP pool range here
+    # Example: - 192.168.1.200-192.168.1.250
+    # Or: - 10.0.0.100/32
+    - 192.168.1.200-192.168.1.250
 
 ---
 apiVersion: metallb.io/v1beta1

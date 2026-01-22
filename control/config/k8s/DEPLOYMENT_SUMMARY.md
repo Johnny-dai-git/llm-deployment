@@ -2,14 +2,17 @@
 
 ## ✅ 已完成的修改
 
-### 1. 创建 Platform Ingress（暴露服务）
-- **文件**: `base/ingress/platform-ingress.yaml`
-- **功能**: 通过外部 IP 访问所有服务
-- **路由**:
-  - `/` → LLM Web
-  - `/api` → LLM API
-  - `/grafana` → Grafana
-  - `/argocd` → ArgoCD（已有）
+### 1. 创建 Ingress 资源（按 namespace 拆分）
+- **LLM Ingress**: `llm/ingress/llm-ingress.yaml`
+  - **Namespace**: `llm`
+  - **路由**:
+    - `/` → LLM Web (`llm-web-service`)
+    - `/api` → LLM API (`llm-api-service`)
+- **Grafana Ingress**: `monitoring/grafana/grafana-ingress.yaml`
+  - **Namespace**: `monitoring`
+  - **路由**:
+    - `/grafana` → Grafana (`grafana`)
+- **注意**: Ingress 不能跨 namespace 引用 Service，因此必须按 namespace 拆分
 
 ### 2. 添加 Image Updater Annotations
 - **文件**: 所有 Deployment 文件

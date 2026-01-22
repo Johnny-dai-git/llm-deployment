@@ -1,21 +1,5 @@
 # =========================
-# 1) MetalLB namespace
-# =========================
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: metallb-system
-  labels:
-    name: metallb-system
-    app.kubernetes.io/name: metallb-system
-    app.kubernetes.io/part-of: llm-serving-platform
-    topology/plane: network
-  annotations:
-    description: "Namespace for MetalLB controllers and speakers (L2/BGP external load balancing)"
-
----
-# =========================
-# 2) Ingress Controller namespace
+# 1) Ingress Controller namespace
 # =========================
 apiVersion: v1
 kind: Namespace
@@ -28,11 +12,11 @@ metadata:
     app.kubernetes.io/part-of: llm-serving-platform
     topology/plane: edge
   annotations:
-    description: "Namespace for nginx ingress controller pods and related resources"
+    description: "Namespace for nginx ingress controller pods and related resources (installed via Helm)"
 
 ---
 # =========================
-# 3) LLM business namespace
+# 2) LLM business namespace
 # =========================
 apiVersion: v1
 kind: Namespace
@@ -49,7 +33,7 @@ metadata:
 
 ---
 # =========================
-# 4) Monitoring / observability namespace
+# 3) Monitoring / observability namespace
 # =========================
 apiVersion: v1
 kind: Namespace
@@ -63,5 +47,3 @@ metadata:
     topology/plane: monitoring
   annotations:
     description: "Namespace for Prometheus, Grafana, kube-state-metrics, dcgm-exporter, and node-exporter"
-
-

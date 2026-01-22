@@ -1,8 +1,8 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: platform-ingress
-  namespace: default
+  name: llm-ingress
+  namespace: llm
   annotations:
     # 允许大请求体（用于 API）
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
@@ -21,7 +21,6 @@ spec:
         backend:
           service:
             name: llm-web-service
-            namespace: llm
             port:
               number: 80
       
@@ -31,17 +30,5 @@ spec:
         backend:
           service:
             name: llm-api-service
-            namespace: llm
             port:
               number: 8000
-      
-      # 路径 3: Grafana
-      - path: /grafana
-        pathType: Prefix
-        backend:
-          service:
-            name: grafana
-            namespace: monitoring
-            port:
-              number: 3000
-

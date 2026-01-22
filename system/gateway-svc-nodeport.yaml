@@ -4,11 +4,11 @@ metadata:
   name: llm-gateway
   namespace: llm
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
     app: llm-gateway
   ports:
   - port: 8000
     targetPort: 8000
-    nodePort: 30080
+    protocol: TCP
 

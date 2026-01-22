@@ -8,25 +8,9 @@ NODE_NAME="system"
 POD_CIDR="192.168.0.0/16"
 
 CALICO_MANIFEST_URL="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml"
-METALLB_MANIFEST_URL="https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml"
-
-# MetalLB IP pool 模板文件：必须包含占位符 VIRTUAL_IP，例如： - VIRTUAL_IP/32
-METALLB_CONFIG="/home/ubuntu/k8s/llm-deployment/control/config/k8s/base/metallb/metallb-ip-pool.yaml"
-
-# 用于生成 VIP 的主网卡
-IFACE="eno1"
-
-# 公网转发端口（按需改）
-PORTS="80,443"
-
-# 如果你想 NAT 到某个 LoadBalancer Service 的 EXTERNAL-IP（可选）
-# 不设置则默认 NAT 到生成的 VIRTUAL_IP
-LB_SVC_NAMESPACE="${LB_SVC_NAMESPACE:-}"
-LB_SVC_NAME="${LB_SVC_NAME:-}"
 
 # 等待/超时参数
 WAIT_NODE_READY_SEC=180
-WAIT_METALLB_READY_SEC=240
 WAIT_CNI_FILE_SEC=120
 
 # CNI 文件（Calico）
@@ -56,10 +40,6 @@ detect_current_user() {
 
 get_master_ip() {
   hostname -I | awk '{print $1}'
-}
-
-get_public_ip() {
-  curl -s --max-time 5 ifconfig.me || true
 }
 
 # =========================
@@ -96,11 +76,6 @@ disable_swap() {
 hard_reset_all() {
   log ">>> HARD RESET: 清理 Kubernetes/网络/证书/kubeconfig（每次运行都重来）"
 
-  # 先尽力清掉 metallb（如果 kubeconfig 还能用）
-  (kubectl delete ipaddresspools.metallb.io --all -A --ignore-not-found 2>/dev/null || true) || true
-  (kubectl delete l2advertisements.metallb.io --all -A --ignore-not-found 2>/dev/null || true) || true
-  (kubectl delete ns metallb-system --ignore-not-found 2>/dev/null || true) || true
-
   # kubeadm reset
   kubeadm reset -f || true
 
@@ -126,6 +101,7 @@ hard_reset_all() {
 # =========================
 # kubeadm init + kubeconfig
 # =========================
+
 kubeadm_init() {
   local master_ip="$1"
   log ">>> kubeadm init (node=${NODE_NAME}, endpoint=${master_ip})"
@@ -208,99 +184,6 @@ remove_controlplane_taint_for_single_node() {
 }
 
 # =========================
-# MetalLB
-# =========================
-install_metallb() {
-  log ">>> 安装 MetalLB"
-  kubectl apply -f "${METALLB_MANIFEST_URL}"
-}
-
-wait_for_metallb_ready() {
-  log ">>> 等待 MetalLB Controller / Speaker Ready"
-  kubectl rollout status -n metallb-system deploy/controller --timeout="${WAIT_METALLB_READY_SEC}s"
-  kubectl rollout status -n metallb-system ds/speaker --timeout="${WAIT_METALLB_READY_SEC}s"
-  kubectl get pods -n metallb-system -o wide || true
-}
-
-# =========================
-# VIP generation (IMPORTANT: logs -> stderr, value -> stdout)
-# =========================
-generate_virtual_ip() {
-  echo ">>> Detect node IP from interface: ${IFACE}" >&2
-
-  local node_ip prefix candidate
-  node_ip=$(ip -4 addr show dev "$IFACE" | awk '/inet /{print $2}' | cut -d/ -f1)
-  [[ -z "$node_ip" ]] && { echo "❌ Failed to detect node IP on ${IFACE}" >&2; return 1; }
-
-  echo "✔ Node IP: ${node_ip}" >&2
-  prefix=$(echo "$node_ip" | cut -d. -f1-3)
-  echo "✔ IP prefix: ${prefix}.x" >&2
-  echo ">>> Searching free virtual IP in ${prefix}.200–250" >&2
-
-  for i in $(seq 200 250); do
-    candidate="${prefix}.${i}"
-    [[ "$candidate" == "$node_ip" ]] && continue
-    if ! ping -c1 -W1 "$candidate" &>/dev/null; then
-      echo "$candidate"
-      return 0
-    fi
-  done
-
-  echo "❌ No free virtual IP found" >&2
-  return 1
-}
-
-apply_metallb_ip_pool() {
-  local vip="$1"
-  [[ -f "${METALLB_CONFIG}" ]] || die "找不到 METALLB_CONFIG: ${METALLB_CONFIG}"
-
-  log ">>> patch MetalLB IP pool: VIRTUAL_IP -> ${vip}"
-  sed -i "s|VIRTUAL_IP|${vip}|g" "${METALLB_CONFIG}"
-
-  log ">>> apply MetalLB IP pool"
-  kubectl apply -f "${METALLB_CONFIG}"
-}
-
-# =========================
-# NAT
-# =========================
-get_svc_external_ip_optional() {
-  local ns="$1" name="$2"
-  [[ -z "$ns" || -z "$name" ]] && return 0
-  kubectl get svc "$name" -n "$ns" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true
-}
-
-setup_nat() {
-  local public_ip="$1"
-  local target_ip="$2"
-  [[ -n "$public_ip" ]] || die "PUBLIC_IP 为空，无法配置 NAT"
-  [[ -n "$target_ip" ]] || die "TARGET_IP 为空，无法配置 NAT"
-
-  log ">>> 配置 NAT：${public_ip} -> ${target_ip} (ports: ${PORTS})"
-
-  # ensure ip_forward
-  sysctl -w net.ipv4.ip_forward=1 >/dev/null
-
-  # idempotent cleanup
-  iptables -t nat -D PREROUTING -d "$public_ip" -p tcp -m multiport --dports "$PORTS" \
-    -j DNAT --to-destination "$target_ip" 2>/dev/null || true
-
-  iptables -t nat -D POSTROUTING -d "$target_ip" -p tcp -m multiport --dports "$PORTS" \
-    -j MASQUERADE 2>/dev/null || true
-
-  # add rules
-  iptables -t nat -A PREROUTING \
-    -d "$public_ip" -p tcp -m multiport --dports "$PORTS" \
-    -j DNAT --to-destination "$target_ip"
-
-  iptables -t nat -A POSTROUTING \
-    -d "$target_ip" -p tcp -m multiport --dports "$PORTS" \
-    -j MASQUERADE
-
-  log "✅ NAT 完成：PUBLIC_IP=${public_ip} -> TARGET_IP=${target_ip}"
-}
-
-# =========================
 # Join command
 # =========================
 print_join_cmd() {
@@ -338,31 +221,6 @@ kick_cri_and_kubelet
 wait_for_node_ready || true
 
 remove_controlplane_taint_for_single_node
-
-# MetalLB
-install_metallb
-wait_for_metallb_ready
-
-# VIP + pool
-VIRTUAL_IP="$(generate_virtual_ip)"
-log "✔ Selected MetalLB virtual IP: ${VIRTUAL_IP}"
-apply_metallb_ip_pool "${VIRTUAL_IP}"
-
-# NAT
-PUBLIC_IP="$(get_public_ip)"
-log ">>> 公网 IP: ${PUBLIC_IP:-<empty>}"
-if [[ -z "$PUBLIC_IP" ]]; then
-  log "⚠️  未获取到公网 IP（ifconfig.me），跳过 NAT 配置"
-else
-  TARGET_IP="$(get_svc_external_ip_optional "${LB_SVC_NAMESPACE}" "${LB_SVC_NAME}")"
-  if [[ -n "$TARGET_IP" ]]; then
-    log "✔ 使用 LoadBalancer Service EXTERNAL-IP 作为 NAT target: ${TARGET_IP} (ns=${LB_SVC_NAMESPACE}, svc=${LB_SVC_NAME})"
-  else
-    TARGET_IP="${VIRTUAL_IP}"
-    log "✔ 未指定/未找到 LoadBalancer Service，使用 VIRTUAL_IP 作为 NAT target: ${TARGET_IP}"
-  fi
-  setup_nat "${PUBLIC_IP}" "${TARGET_IP}"
-fi
 
 print_join_cmd
 

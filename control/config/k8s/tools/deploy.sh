@@ -9,7 +9,6 @@ echo "Create directory structure under $BASE_DIR ..."
 # 1) Base
 mkdir -p "$BASE_DIR/base/namespaces"
 mkdir -p "$BASE_DIR/base/metallb"
-mkdir -p "$BASE_DIR/base/ingress-nginx"
 mkdir -p "$BASE_DIR/base/networkpolicy"
 
 # 2) LLM
@@ -32,10 +31,6 @@ echo "Move files into functional directories ..."
 
 # ---------- Base / MetalLB ----------
 [ -f "generate_metallb_ip.sh" ] && mv generate_metallb_ip.sh "$BASE_DIR/base/metallb/"
-
-# ---------- Base / ingress-nginx ----------
-[ -f "ingress-nginx-deployment.yaml" ] && mv ingress-nginx-deployment.yaml "$BASE_DIR/base/ingress-nginx/"
-[ -f "ingress-nginx-service.yaml" ] && mv ingress-nginx-service.yaml "$BASE_DIR/base/ingress-nginx/"
 
 # ---------- Base / NetworkPolicy ----------
 [ -f "llm-networkpolicy.yaml" ] && mv llm-networkpolicy.yaml "$BASE_DIR/base/networkpolicy/"
