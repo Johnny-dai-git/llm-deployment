@@ -3,71 +3,23 @@ kind: DaemonSet
 metadata:
   name: dcgm-exporter
   namespace: monitoring
-  labels:
-    app: dcgm-exporter
 spec:
   selector:
     matchLabels:
       app: dcgm-exporter
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
   template:
     metadata:
       labels:
         app: dcgm-exporter
-      annotations:
-        # Prometheus scraping annotations
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9400"
-        prometheus.io/path: "/metrics"
     spec:
       nodeSelector:
         gpu-node: "true"
-      # 需要 hostPID 来访问 GPU 设备
       hostPID: true
       containers:
       - name: dcgm-exporter
-        # 固定版本，避免意外更新
-        # 注意：根据你的 CUDA 版本选择合适的 dcgm-exporter 版本
-        image: nvidia/dcgm-exporter:3.3.5-3.2.0-ubuntu22.04
-        imagePullPolicy: IfNotPresent
+        image: nvidia/dcgm-exporter:latest
         ports:
-        - name: http
-          containerPort: 9400
-          protocol: TCP
-        # 安全上下文：需要特权访问来读取 GPU 设备
-        securityContext:
-          privileged: true
-          capabilities:
-            add:
-              - SYS_ADMIN
-        # 挂载必要的设备路径
-        volumeMounts:
-        - name: dev
-          mountPath: /dev
-        - name: proc
-          mountPath: /host/proc
-          readOnly: true
-        - name: sys
-          mountPath: /host/sys
-          readOnly: true
-        # 健康检查
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 9400
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 3
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 9400
-          initialDelaySeconds: 30
-          periodSeconds: 30
-          timeoutSeconds: 3
+        - containerPort: 9400
         resources:
           requests:
             cpu: "50m"
@@ -75,13 +27,4 @@ spec:
           limits:
             cpu: "100m"
             memory: "128Mi"
-      volumes:
-      - name: dev
-        hostPath:
-          path: /dev
-      - name: proc
-        hostPath:
-          path: /proc
-      - name: sys
-        hostPath:
-          path: /sys
+

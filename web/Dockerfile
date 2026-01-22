@@ -13,3 +13,4 @@ COPY . /usr/share/nginx/html/
 EXPOSE 80
 
 # nginx starts automatically, no CMD needed
+
