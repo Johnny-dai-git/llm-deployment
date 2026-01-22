@@ -7,7 +7,8 @@ set -e
 
 REMOTE_USER="exouser"
 
-CONTROL_IP="149.165.150.232"       # control 节点
+# CONTROL_IP="149.165.150.232"       # control 节点
+# CONTROL_IP removed - system node now serves as control plane
 
 SYSTEM_NODES=(                  # system / CPU 节点
   "149.165.147.30"
@@ -18,7 +19,7 @@ GPU_NODES=(                     # GPU worker 节点
   "149.165.147.81"
 )
 
-ALL_NODES=("$CONTROL_IP" "${SYSTEM_NODES[@]}" "${GPU_NODES[@]}")
+ALL_NODES=("${SYSTEM_NODES[@]}" "${GPU_NODES[@]}")  # Removed CONTROL_IP - system node is control plane
 
 ########################################
 # 2. 提示一下，防止误操作

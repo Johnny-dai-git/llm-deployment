@@ -22,20 +22,22 @@ fi
 
 echo "================ Step 2: Label nodes ====================="
 
-CONTROL_NODE="control"
+# CONTROL_NODE="control"
+# CONTROL_NODE removed - system node now serves as control plane
 SYSTEM_NODE="system"
-GPU_NODE1="worker-1"
-GPU_NODE2="worker-2"
 
-echo "Labeling control node..."
-kubectl label node $CONTROL_NODE control=true --overwrite
-
+# echo "Labeling control node..."
+# control 节点标签已移除（system 节点同时作为 control plane）
+# kubectl label node $CONTROL_NODE control=true --overwrite
+#   # 
+  # system 节点同时作为 control plane，不需要单独的 control 标签
 echo "Labeling system node..."
-kubectl label node $SYSTEM_NODE system=true ingress=true --overwrite
-
-echo "Labeling GPU nodes..."
-kubectl label node $GPU_NODE1 gpu-node=true --overwrite
-kubectl label node $GPU_NODE2 gpu-node=true --overwrite
+  kubectl label node $SYSTEM_NODE system=true ingress=true --overwrite
+# GPU 节点标签（暂时不需要，GPU worker 已禁用）
+# 
+# echo "Labeling GPU nodes..."
+# # kubectl label node $GPU_NODE1 gpu-node=true --overwrite
+# kubectl label node $GPU_NODE2 gpu-node=true --overwrite
 
 
 echo "================ Step 3: Deploy MetalLB =================="
@@ -190,7 +192,7 @@ kubectl get secret ghcr-secret -n llm || echo "⚠ ghcr-secret does not exist, p
 
 echo ""
 echo "=========================================================="
-echo "🚀 Infrastructure deployed successfully from CONTROL NODE!"
+echo "🚀 Infrastructure deployed successfully from SYSTEM NODE (as control plane)!"
 echo ""
 echo "📋 Deployment Notes:"
 echo "   - Infrastructure (MetalLB, ingress-nginx, ArgoCD) has been deployed"

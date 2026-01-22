@@ -7,7 +7,8 @@ set -e
 # ======= 配置区域（只需改这里） =======
 REMOTE_USER="exouser"
 
-CONTROL_IP="149.165.150.232"     # control 节点
+# CONTROL_IP="149.165.150.232"     # control 节点
+# CONTROL_IP removed - system node now serves as control plane
 SYSTEM_NODES=("149.165.147.30")  # system 节点
 GPU_NODES=("149.165.147.25" "149.165.147.81")  # GPU worker 节点
 
@@ -24,7 +25,7 @@ REMOTE_INSTALL_DIR="${REMOTE_REPO_DIR}/install"
 
 SSH_KEY="$HOME/.ssh/id_ed25519.pub"
 
-ALL_NODES=("$CONTROL_IP" "${SYSTEM_NODES[@]}" "${GPU_NODES[@]}")
+ALL_NODES=("${SYSTEM_NODES[@]}" "${GPU_NODES[@]}")  # Removed CONTROL_IP - system node is control plane
 
 # ================================================================
 # Phase 0: 自动 ssh-copy-id（一次性写入公钥）
@@ -81,8 +82,8 @@ for IP in "${ALL_NODES[@]}"; do
     fi
 EOF
 
-  # 修改 metallb-ip-pool.yaml，使用 system node IP（仅在 control 节点）
-  if [ "$IP" == "$CONTROL_IP" ]; then
+  # 修改 metallb-ip-pool.yaml，使用 system node IP（在 system 节点（作为 control plane））
+  if [ "$IP" == "$SYSTEM_NODE_IP" ]; then  # Changed from CONTROL_IP to SYSTEM_NODE_IP
     echo ">>> 修改 metallb-ip-pool.yaml 使用 system node IP: $SYSTEM_NODE_IP ..."
     ssh ${REMOTE_USER}@${IP} "cd ${REMOTE_REPO_DIR} && \
       sed -i 's/PUBLIC_IP/${SYSTEM_NODE_IP}/' control/config/k8s/base/metallb/metallb-ip-pool.yaml && \
@@ -102,25 +103,25 @@ for IP in "${ALL_NODES[@]}"; do
 done
 
 # ================================================================
-# Phase 3: control 节点执行 control.sh
+# Phase 3: system 节点执行（作为 control plane） control.sh
 # ================================================================
 echo
-echo "===== Phase 3: control 节点初始化 kubeadm + CNI ====="
+echo "===== Phase 3: system 节点初始化（作为 control plane） kubeadm + CNI ====="
 
-# 在执行 control.sh 之前，先修改它以添加 --node-name=control
-echo ">>> 修改 control.sh 以设置 node-name=control ..."
-ssh ${REMOTE_USER}@${CONTROL_IP} "cd ${REMOTE_INSTALL_DIR} && \
-  sudo sed -i 's/kubeadm init --pod-network-cidr=/kubeadm init --node-name=control --pod-network-cidr=/' control.sh"
+# 在执行 control.sh 之前，先修改它以添加 --node-name=system
+echo ">>> 修改 control.sh 以设置 node-name=system ..."
+ssh ${REMOTE_USER}@${SYSTEM_NODE_IP} "cd ${REMOTE_INSTALL_DIR} && \
+  sudo sed -i 's/kubeadm init --pod-network-cidr=/kubeadm init --node-name=system --pod-network-cidr=/' control.sh"
 
 # 执行 control.sh
-ssh ${REMOTE_USER}@${CONTROL_IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash control.sh"
+ssh ${REMOTE_USER}@${SYSTEM_NODE_IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash control.sh"
 
 # ================================================================
 # Phase 4: 获取 join 命令
 # ================================================================
 echo
-echo "===== Phase 4: 自动从 control 节点获取 kubeadm join 命令 ====="
-JOIN_CMD=$(ssh ${REMOTE_USER}@${CONTROL_IP} "sudo kubeadm token create --print-join-command")
+echo "===== Phase 4: 自动从 system 节点获取 kubeadm join 命令 ====="
+JOIN_CMD=$(ssh ${REMOTE_USER}@${SYSTEM_NODE_IP} "sudo kubeadm token create --print-join-command")
 
 if [ -z "$JOIN_CMD" ]; then
   echo "❌ 无法获取 join 命令，退出"
@@ -135,30 +136,32 @@ echo "   $JOIN_CMD"
 # ================================================================
 echo
 echo "===== Phase 5: 各类节点执行本地初始化脚本 ====="
-
-# system 节点
-for IP in "${SYSTEM_NODES[@]}"; do
-  echo ">>> [system] 在 $IP 上执行 system.sh ..."
-  ssh ${REMOTE_USER}@${IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash system.sh"
-done
+# 
+# system 节点不再需要执行 system.sh（因为已经在 Phase 3 执行了 control.sh）
+# # system 节点
+# for IP in "${SYSTEM_NODES[@]}"; do
+#   echo ">>> [system] 在 $IP 上执行 system.sh ..."
+#   ssh ${REMOTE_USER}@${IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash system.sh"
+# done
 
 # gpu 节点
 for IP in "${GPU_NODES[@]}"; do
   echo ">>> [gpu worker] 在 $IP 上执行 gpu_worker.sh ..."
   ssh ${REMOTE_USER}@${IP} "cd ${REMOTE_INSTALL_DIR} && sudo bash gpu_worker.sh"
 done
-
-# ================================================================
-# Phase 6: 统一 join 所有非-control 节点
-# ================================================================
-echo
-echo "===== Phase 6: 所有 worker 节点执行 kubeadm join ====="
-
-# system 节点 join，使用 node-name=system
-for IP in "${SYSTEM_NODES[@]}"; do
-  echo ">>> [join] $IP 加入集群 (node-name=system) ..."
-  ssh ${REMOTE_USER}@${IP} "sudo $JOIN_CMD --node-name=system"
-done
+# system 节点不再需要 join（因为它已经是 control plane）
+# 
+# # ================================================================
+# # Phase 6: 统一 join 所有非-control 节点
+# # ================================================================
+# echo
+# echo "===== Phase 6: 所有 worker 节点执行 kubeadm join ====="
+# 
+# # system 节点 join，使用 node-name=system
+# for IP in "${SYSTEM_NODES[@]}"; do
+#   echo ">>> [join] $IP 加入集群 (node-name=system) ..."
+#   ssh ${REMOTE_USER}@${IP} "sudo $JOIN_CMD --node-name=system"
+# done
 
 # GPU 节点 join，使用 node-name=worker-1, worker-2
 GPU_INDEX=1
@@ -171,8 +174,8 @@ done
 
 echo
 echo "🎉🎉🎉 全部节点已经加入 Kubernetes 集群！"
-echo "👉 回到 control 节点运行："
-echo "     ssh ${REMOTE_USER}@${CONTROL_IP}"
+echo "👉 回到 system 节点（control plane）运行："
+echo "     ssh ${REMOTE_USER}@${SYSTEM_NODE_IP}"
 echo "     cd ${REMOTE_REPO_DIR}/control"
 echo "     bash run_control"
 echo ""
@@ -181,17 +184,12 @@ echo "如果你需要下一步部署 vLLM / Triton / Dynamo，我也可以帮你
 echo
 echo "===== Phase 7: 为所有节点自动打开新的 terminal 并 SSH 登录 ====="
 
+# control 节点已合并到 system 节点
 open_terminal_cmd="gnome-terminal -- bash -c"
 
-# 打开 control 节点终端
-echo ">>> 打开 control 节点终端：${CONTROL_IP}"
-$open_terminal_cmd "ssh ${REMOTE_USER}@${CONTROL_IP}; exec bash" &
-
-# 打开 system 节点终端
-for IP in "${SYSTEM_NODES[@]}"; do
-  echo ">>> 打开 system 节点终端：$IP"
-  $open_terminal_cmd "ssh ${REMOTE_USER}@${IP}; exec bash" &
-done
+# 打开 system 节点终端（作为 control plane）
+echo ">>> 打开 system 节点（control plane）终端：${SYSTEM_NODE_IP}"
+$open_terminal_cmd "ssh ${REMOTE_USER}@${SYSTEM_NODE_IP}; exec bash" &
 
 # 打开 GPU worker 节点终端
 for IP in "${GPU_NODES[@]}"; do
