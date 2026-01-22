@@ -41,6 +41,28 @@ echo "===== 初始化 Kubernetes 控制平面开始 ====="
 # 安装 net-tools（如果需要）
 sudo apt install -y net-tools || true
 
+echo ">>> 检查并修复 containerd cgroup 配置"
+
+sudo mkdir -p /etc/containerd
+
+if ! grep -q "SystemdCgroup = true" /etc/containerd/config.toml 2>/dev/null; then
+    echo ">>> 修复 SystemdCgroup = true"
+    containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+    sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+    sudo systemctl restart containerd
+else
+    echo ">>> containerd cgroup 已正确配置"
+fi
+
+# ===== 在 cgroup 修复后加 =====
+echo ">>> 关闭 swap"
+sudo swapoff -a || true
+sudo sed -i '/ swap / s/^/#/' /etc/fstab || true
+
+echo ">>> 清理旧 kubeadm 状态（如存在）"
+sudo kubeadm reset -f || true
+sudo rm -rf /etc/cni/net.d ~/.kube
+
 # 获取主节点 IP
 MASTER_IP=$(hostname -I | awk '{print $1}')
 
@@ -63,8 +85,14 @@ sudo kubeadm token create --print-join-command
 echo "===== 控制平面初始化完成 ====="
 
 # 配置 exouser 的 kubectl
-mkdir -p /home/exouser/.kube
-cp /etc/kubernetes/admin.conf /home/exouser/.kube/config
-chown exouser:exouser /home/exouser/.kube/config
+# 配置当前用户的 kubectl（平台无关）
+CURRENT_USER=$(logname 2>/dev/null || echo $SUDO_USER || whoami)
+USER_HOME=$(eval echo "~$CURRENT_USER")
+
+echo ">>> 配置 kubectl 给用户: $CURRENT_USER ($USER_HOME)"
+
+mkdir -p "$USER_HOME/.kube"
+sudo cp /etc/kubernetes/admin.conf "$USER_HOME/.kube/config"
+sudo chown "$CURRENT_USER:$CURRENT_USER" "$USER_HOME/.kube/config"
 
 echo "===== system 节点完整初始化完成 ====="
