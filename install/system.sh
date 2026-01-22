@@ -76,20 +76,40 @@ disable_swap() {
 hard_reset_all() {
   log ">>> HARD RESET: 清理 Kubernetes/网络/证书/kubeconfig（每次运行都重来）"
 
-  # kubeadm reset
-  kubeadm reset -f || true
+  # 1. 停止所有相关服务（确保 cgroup 可以释放）
+  log ">>> 停止 Kubernetes 相关服务..."
+  systemctl stop kubelet 2>/dev/null || log "  kubelet 未运行或已停止"
+  systemctl stop containerd 2>/dev/null || log "  containerd 未运行或已停止"
+  systemctl stop docker 2>/dev/null || log "  docker 未运行或已停止"
 
-  # 彻底清理控制面/etcd
+  # 2. 让 systemd 释放 cgroup（关键步骤）
+  log ">>> 重新加载 systemd 以释放 cgroup..."
+  systemctl daemon-reexec 2>/dev/null || log "  daemon-reexec 执行完成（可能无输出）"
+
+  # 3. 等待服务完全停止
+  sleep 2
+
+  # 4. kubeadm reset（现在应该可以安全执行）
+  log ">>> 执行 kubeadm reset..."
+  kubeadm reset -f || {
+    log "⚠️  kubeadm reset 遇到错误，继续清理..."
+  }
+
+  # 5. 彻底清理控制面/etcd
+  log ">>> 清理 Kubernetes 配置目录..."
   rm -rf /etc/kubernetes /var/lib/etcd || true
 
-  # CNI 配置
+  # 6. CNI 配置
+  log ">>> 清理 CNI 配置..."
   rm -rf /etc/cni/net.d || true
 
-  # kubeconfig（关键：避免旧证书导致 x509 unknown authority）
+  # 7. kubeconfig（关键：避免旧证书导致 x509 unknown authority）
+  log ">>> 清理 kubeconfig..."
   rm -rf /root/.kube || true
   rm -rf /home/*/.kube || true
 
-  # （可选）清一些常见残留目录
+  # 8. （可选）清一些常见残留目录
+  log ">>> 清理 CNI/Calico 残留目录..."
   rm -rf /var/lib/cni /var/lib/calico /var/run/calico || true
 
   log ">>> HARD RESET 完成"

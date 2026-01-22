@@ -43,14 +43,27 @@ for IP in "${ALL_NODES[@]}"; do
   ssh "${REMOTE_USER}@${IP}" "bash -s" << 'EOF'
 set -e
 
-echo "[*] kubeadm reset -f ..."
-sudo kubeadm reset -f || true
+echo "[*] 1. 停止所有相关服务..."
+sudo systemctl stop kubelet 2>/dev/null || echo "  kubelet 未运行或已停止"
+sudo systemctl stop containerd 2>/dev/null || echo "  containerd 未运行或已停止"
+sudo systemctl stop docker 2>/dev/null || echo "  docker 未运行或已停止"
 
-echo "[*] 停止 kubelet（如果在跑）..."
-sudo systemctl stop kubelet || true
+echo "[*] 2. 重新加载 systemd 以释放 cgroup..."
+sudo systemctl daemon-reexec 2>/dev/null || echo "  daemon-reexec 执行完成"
 
-echo "[*] 删除 /etc/kubernetes /var/lib/etcd ..."
+echo "[*] 3. 等待服务完全停止..."
+sleep 2
+
+echo "[*] 4. 执行 kubeadm reset..."
+sudo kubeadm reset -f || {
+  echo "  ⚠️  kubeadm reset 遇到错误，继续清理..."
+}
+
+echo "[*] 5. 删除 /etc/kubernetes /var/lib/etcd ..."
 sudo rm -rf /etc/kubernetes /var/lib/etcd
+
+echo "[*] 6. 清理 CNI 配置..."
+sudo rm -rf /etc/cni/net.d /var/lib/cni /var/lib/calico /var/run/calico
 
 echo "[*] 清理完成。"
 EOF
