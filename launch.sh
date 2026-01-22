@@ -73,7 +73,7 @@ kubectl apply -f config/k8s/base/namespaces/
 echo "================ Step 2: Label nodes ====================="
 SYSTEM_NODE="system"
 echo "Labeling system node..."
-kubectl label node $SYSTEM_NODE system=true ingress=true --overwrite
+kubectl label node $SYSTEM_NODE system=true ingress=true gpu-node=true --overwrite
 
 echo "================ Step 3: Deploy ingress-nginx (Helm) ============"
 # Step 3.1: Check Helm installation

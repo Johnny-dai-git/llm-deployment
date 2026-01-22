@@ -13,7 +13,7 @@ metadata:
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
-  replicas: 0  # Disabled: No model files available yet. Set to 1 when ready.
+  replicas: 1  # Enabled: vLLM worker running on system node with GPU
   strategy:
     type: RollingUpdate
     rollingUpdate:
