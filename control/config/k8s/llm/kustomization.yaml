@@ -15,6 +15,7 @@ resources:
   # Web frontend
   - web/llm-web-deployment.yaml
   - web/llm-web-service.yaml
+  - web/llm-web-nginx-configmap.yaml
   
   # Workers
   - workers/vllm/vllm-worker-deployment.yaml
