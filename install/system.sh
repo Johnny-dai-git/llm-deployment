@@ -76,10 +76,14 @@ disable_swap() {
 hard_reset_all() {
   log ">>> HARD RESET: 彻底清理 Kubernetes/网络/证书/kubeconfig（每次运行都重来）"
 
-  # 1. 停止所有 systemd 服务（核心）
-  log ">>> 1. 停止 Kubernetes 相关服务..."
+  # 1. 停止并 mask kubelet（防止它自动拉起 static pod）
+  log ">>> 1. 停止并 mask kubelet（防止自动拉起 static pod）..."
   systemctl stop kubelet 2>/dev/null || log "  kubelet 未运行或已停止"
-  systemctl stop containerd 2>/dev/null || log "  containerd 未运行或已停止"
+  systemctl disable kubelet 2>/dev/null || true
+  systemctl mask kubelet 2>/dev/null || true
+  
+  # 停止其他服务（但不停止 containerd，后面会 restart）
+  log ">>> 1.1 停止 docker（containerd 稍后 restart）..."
   systemctl stop docker 2>/dev/null || log "  docker 未运行或已停止"
 
   # 2. 杀掉所有 Kubernetes 相关进程（关键一步）
@@ -116,27 +120,33 @@ hard_reset_all() {
   rm -rf /root/.kube || true
   rm -rf /home/*/.kube || true
 
-  # 9. 重新启动 containerd（准备干净 init）
-  log ">>> 8. 重新加载 systemd 并启动 containerd..."
+  # 9. 重新启动 containerd 并确保 socket 就绪（准备干净 init）
+  log ">>> 8. 重新加载 systemd 并重启 containerd..."
   systemctl daemon-reexec 2>/dev/null || log "  daemon-reexec 执行完成"
   systemctl daemon-reload
-  systemctl start containerd || log "  containerd 启动失败（可能未安装）"
+  systemctl restart containerd || log "  containerd 重启失败（可能未安装）"
   systemctl enable containerd 2>/dev/null || true
+  
+  # 9.1 等待 containerd socket 就绪（关键）
+  log ">>> 8.1 等待 containerd socket 就绪..."
+  local end=$((SECONDS + 30))
+  while [ $SECONDS -lt $end ]; do
+    [[ -S /var/run/containerd/containerd.sock ]] && break
+    sleep 1
+  done
+  [[ -S /var/run/containerd/containerd.sock ]] || die "containerd.sock 不存在：/var/run/containerd/containerd.sock"
 
   # 10. 最终确认端口（可选，但有助于诊断）
   log ">>> 9. 检查关键端口是否已释放..."
-  if command -v lsof >/dev/null 2>&1; then
-    local port_6443 port_2379 port_2380
-    port_6443=$(lsof -i :6443 2>/dev/null | wc -l)
-    port_2379=$(lsof -i :2379 2>/dev/null | wc -l)
-    port_2380=$(lsof -i :2380 2>/dev/null | wc -l)
-    if [ "$port_6443" -eq 0 ] && [ "$port_2379" -eq 0 ] && [ "$port_2380" -eq 0 ]; then
-      log "  ✔ 所有关键端口已释放（6443, 2379, 2380）"
+  if command -v ss >/dev/null 2>&1; then
+    if ss -lntp | grep -qE ':(6443|2379|2380)\b'; then
+      log "  ⚠️  端口仍被占用："
+      ss -lntp | grep -E ':(6443|2379|2380)\b' || true
     else
-      log "  ⚠️  部分端口仍被占用，可能需要手动检查"
+      log "  ✔ 关键端口已释放（6443, 2379, 2380）"
     fi
   else
-    log "  lsof 未安装，跳过端口检查"
+    log "  ss 未安装，跳过端口检查"
   fi
 
   log ">>> HARD RESET 完成"
@@ -151,6 +161,13 @@ hard_reset_all() {
 
 kubeadm_init() {
   local master_ip="$1"
+  
+  # 在 init 之前 unmask kubelet（现在可以安全启动）
+  log ">>> 准备 kubeadm init：unmask 并启动 kubelet..."
+  systemctl unmask kubelet 2>/dev/null || true
+  systemctl enable kubelet 2>/dev/null || true
+  systemctl start kubelet 2>/dev/null || true
+  
   log ">>> kubeadm init (node=${NODE_NAME}, endpoint=${master_ip})"
   kubeadm init \
     --node-name="${NODE_NAME}" \
