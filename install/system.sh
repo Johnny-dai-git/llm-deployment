@@ -74,43 +74,70 @@ disable_swap() {
 # Hard Reset (make every run clean)
 # =========================
 hard_reset_all() {
-  log ">>> HARD RESET: 清理 Kubernetes/网络/证书/kubeconfig（每次运行都重来）"
+  log ">>> HARD RESET: 彻底清理 Kubernetes/网络/证书/kubeconfig（每次运行都重来）"
 
-  # 1. 停止所有相关服务（确保 cgroup 可以释放）
-  log ">>> 停止 Kubernetes 相关服务..."
+  # 1. 停止所有 systemd 服务（核心）
+  log ">>> 1. 停止 Kubernetes 相关服务..."
   systemctl stop kubelet 2>/dev/null || log "  kubelet 未运行或已停止"
   systemctl stop containerd 2>/dev/null || log "  containerd 未运行或已停止"
   systemctl stop docker 2>/dev/null || log "  docker 未运行或已停止"
 
-  # 2. 让 systemd 释放 cgroup（关键步骤）
-  log ">>> 重新加载 systemd 以释放 cgroup..."
-  systemctl daemon-reexec 2>/dev/null || log "  daemon-reexec 执行完成（可能无输出）"
+  # 2. 杀掉所有 Kubernetes 相关进程（关键一步）
+  log ">>> 2. 杀掉所有 Kubernetes 相关进程..."
+  pkill -9 kube-apiserver 2>/dev/null || log "  kube-apiserver 进程不存在"
+  pkill -9 kube-controller-manager 2>/dev/null || log "  kube-controller-manager 进程不存在"
+  pkill -9 kube-scheduler 2>/dev/null || log "  kube-scheduler 进程不存在"
+  pkill -9 kube-proxy 2>/dev/null || log "  kube-proxy 进程不存在"
+  pkill -9 etcd 2>/dev/null || log "  etcd 进程不存在"
 
-  # 3. 等待服务完全停止
+  # 3. 删除 static pod manifests（防止 kubelet 复活它们）
+  log ">>> 3. 删除 static pod manifests..."
+  rm -rf /etc/kubernetes/manifests/* 2>/dev/null || log "  manifests 目录不存在或已清空"
+
+  # 4. 等待进程完全终止
   sleep 2
 
-  # 4. kubeadm reset（现在应该可以安全执行）
-  log ">>> 执行 kubeadm reset..."
+  # 5. kubeadm reset（现在应该可以安全执行）
+  log ">>> 4. 执行 kubeadm reset..."
   kubeadm reset -f || {
     log "⚠️  kubeadm reset 遇到错误，继续清理..."
   }
 
-  # 5. 彻底清理控制面/etcd
-  log ">>> 清理 Kubernetes 配置目录..."
-  rm -rf /etc/kubernetes /var/lib/etcd || true
+  # 6. 清空 k8s 状态数据
+  log ">>> 5. 清空 Kubernetes 状态数据..."
+  rm -rf /etc/kubernetes /var/lib/kubelet /var/lib/etcd || true
 
-  # 6. CNI 配置
-  log ">>> 清理 CNI 配置..."
-  rm -rf /etc/cni/net.d || true
+  # 7. 清 CNI / Calico 残留
+  log ">>> 6. 清理 CNI / Calico 残留..."
+  rm -rf /var/run/calico /etc/cni/net.d /opt/cni/bin /var/lib/cni /var/lib/calico || true
 
-  # 7. kubeconfig（关键：避免旧证书导致 x509 unknown authority）
-  log ">>> 清理 kubeconfig..."
+  # 8. 清理 kubeconfig（关键：避免旧证书导致 x509 unknown authority）
+  log ">>> 7. 清理 kubeconfig..."
   rm -rf /root/.kube || true
   rm -rf /home/*/.kube || true
 
-  # 8. （可选）清一些常见残留目录
-  log ">>> 清理 CNI/Calico 残留目录..."
-  rm -rf /var/lib/cni /var/lib/calico /var/run/calico || true
+  # 9. 重新启动 containerd（准备干净 init）
+  log ">>> 8. 重新加载 systemd 并启动 containerd..."
+  systemctl daemon-reexec 2>/dev/null || log "  daemon-reexec 执行完成"
+  systemctl daemon-reload
+  systemctl start containerd || log "  containerd 启动失败（可能未安装）"
+  systemctl enable containerd 2>/dev/null || true
+
+  # 10. 最终确认端口（可选，但有助于诊断）
+  log ">>> 9. 检查关键端口是否已释放..."
+  if command -v lsof >/dev/null 2>&1; then
+    local port_6443 port_2379 port_2380
+    port_6443=$(lsof -i :6443 2>/dev/null | wc -l)
+    port_2379=$(lsof -i :2379 2>/dev/null | wc -l)
+    port_2380=$(lsof -i :2380 2>/dev/null | wc -l)
+    if [ "$port_6443" -eq 0 ] && [ "$port_2379" -eq 0 ] && [ "$port_2380" -eq 0 ]; then
+      log "  ✔ 所有关键端口已释放（6443, 2379, 2380）"
+    else
+      log "  ⚠️  部分端口仍被占用，可能需要手动检查"
+    fi
+  else
+    log "  lsof 未安装，跳过端口检查"
+  fi
 
   log ">>> HARD RESET 完成"
 }
