@@ -1,9 +1,71 @@
 #!/bin/bash
 set -e
 
+# ======= 配置区域 =======
+# GitHub repository configuration
+GITHUB_USERNAME="Johnny-dai-git"
+GITHUB_TOKEN="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"
+GITHUB_REPO="llm-deployment"
+GITHUB_BRANCH="main"
+GITHUB_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
+
+# 获取脚本所在目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${SCRIPT_DIR}"
+INSTALL_DIR="${REPO_DIR}/install"
+CONTROL_DIR="${REPO_DIR}/control"
+
+echo "===== 本地 system 节点完整初始化开始（control plane）====="
+
+# ================================================================
+# Phase 0: 确保 git 已安装
+# ================================================================
+echo "===== Phase 0: 确保 git 已安装 ====="
+which git || (sudo apt update && sudo apt install -y git)
+
+# ================================================================
+# Phase 1: 更新或克隆 GitHub 仓库
+# ================================================================
+echo
+echo "===== Phase 1: 更新或克隆 GitHub 仓库 ====="
+
+cd "${REPO_DIR}"
+if [ -d ".git" ]; then
+  echo ">>> 仓库已存在，拉取最新更改..."
+  git pull origin ${GITHUB_BRANCH} || echo "⚠ Git pull failed, continuing..."
+else
+  echo ">>> 当前目录不是 git 仓库，跳过 pull"
+fi
+
+# ================================================================
+# Phase 2: 执行 all_install.sh（通用初始化）
+# ================================================================
+echo
+echo "===== Phase 2: 执行 all_install.sh（通用初始化）====="
+echo ">>> 在本地执行 all_install.sh ..."
+cd "${INSTALL_DIR}"
+sudo bash all_install.sh
+
+# ================================================================
+# Phase 3: 执行 system.sh（包含 control.sh 的内容）
+# ================================================================
+echo
+echo "===== Phase 3: 执行 system.sh（初始化 Kubernetes 控制平面）====="
+echo ">>> 在本地执行 system.sh ..."
+cd "${INSTALL_DIR}"
+sudo bash system.sh
+
+# ================================================================
+# Phase 4: 部署基础设施（原 run_control 的内容）
+# ================================================================
+echo
+echo "===== Phase 4: 部署基础设施（MetalLB, ingress-nginx, ArgoCD）====="
+
+# 切换到 control 目录（因为 run_control 的路径是相对于 control 目录的）
+cd "${CONTROL_DIR}"
+
 echo "================ Step 1: Apply namespaces ================"
 kubectl apply -f namespaces/
-
 
 echo "================ Step 1.5: Create ghcr-secret ============"
 # Create ghcr.io authentication Secret (for pulling private images)
@@ -19,30 +81,13 @@ else
     echo "   Please ensure GitHub token and username are configured"
 fi
 
-
 echo "================ Step 2: Label nodes ====================="
-
-# CONTROL_NODE="control"
-# CONTROL_NODE removed - system node now serves as control plane
 SYSTEM_NODE="system"
-
-# echo "Labeling control node..."
-# control 节点标签已移除（system 节点同时作为 control plane）
-# kubectl label node $CONTROL_NODE control=true --overwrite
-#   # 
-  # system 节点同时作为 control plane，不需要单独的 control 标签
 echo "Labeling system node..."
-  kubectl label node $SYSTEM_NODE system=true ingress=true --overwrite
-# GPU 节点标签（暂时不需要，GPU worker 已禁用）
-# 
-# echo "Labeling GPU nodes..."
-# # kubectl label node $GPU_NODE1 gpu-node=true --overwrite
-# kubectl label node $GPU_NODE2 gpu-node=true --overwrite
-
+kubectl label node $SYSTEM_NODE system=true ingress=true --overwrite
 
 echo "================ Step 3: Deploy MetalLB =================="
-
-# Step 3.1: Install official MetalLB (includes controller, speaker, RBAC, etc.)
+# Step 3.1: Install official MetalLB
 echo ">>> Installing official MetalLB..."
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
 
@@ -70,23 +115,21 @@ kubectl -n metallb-system patch daemonset speaker \
               "limits":{"cpu":"200m","memory":"256Mi"}}}
   ]' || echo "⚠ Speaker may not be ready yet, manual patch required later"
 
-# Step 3.5: Apply MetalLB IP pool configuration (using system node IP)
+# Step 3.5: Apply MetalLB IP pool configuration
 echo ">>> Applying MetalLB IP pool configuration..."
 kubectl apply -f config/k8s/base/metallb/metallb-ip-pool.yaml
 
 kubectl get configmap -n metallb-system || true
 
-
 echo "================ Step 4: Deploy ingress-nginx ============"
 kubectl apply -f ingress-nginx/
-
 
 echo "================ Step 5: Deploy ArgoCD ==================="
 # Step 5.1: Create ArgoCD namespace
 echo ">>> Creating ArgoCD namespace..."
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 
-# Step 5.2: Install official ArgoCD (includes all components: server, repo-server, application-controller, redis, dex-server, etc.)
+# Step 5.2: Install official ArgoCD
 echo ">>> Installing official ArgoCD..."
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
@@ -116,8 +159,8 @@ kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
 # Step 5.8: Display ArgoCD initial admin password
 echo ">>> ArgoCD initial admin password:"
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" 2>/dev/null | base64 -d && echo || echo "⚠ Password may not be generated yet, run later: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
-echo ">>> ArgoCD UI: http://149.165.147.30/argocd (access after Ingress takes effect)"
-
+SYSTEM_NODE_IP=$(curl -s ifconfig.me 2>/dev/null || echo "149.165.147.30")
+echo ">>> ArgoCD UI: http://${SYSTEM_NODE_IP}/argocd (access after Ingress takes effect)"
 
 echo "================ Step 6: Install ArgoCD Image Updater ==================="
 # Step 6.1: Create required Secrets before installing Image Updater
@@ -144,8 +187,7 @@ helm repo update
 
 # Step 6.3: Install ArgoCD Image Updater using Helm
 echo ">>> Installing ArgoCD Image Updater using Helm..."
-# 固定 Helm chart 版本以确保一致性
-ARGOCD_IMAGE_UPDATER_CHART_VERSION="0.10.0"  # 请根据实际需要更新版本号
+ARGOCD_IMAGE_UPDATER_CHART_VERSION="0.10.0"
 if [ -f "config/k8s/argocd/image-updater/values.yaml" ]; then
     helm upgrade --install argocd-image-updater argo/argocd-image-updater \
       --version "${ARGOCD_IMAGE_UPDATER_CHART_VERSION}" \
@@ -180,7 +222,6 @@ echo "   - Update interval: 2 minutes (default)"
 echo "   - Annotations are in Deployment YAML files in Git (the only source of truth)"
 echo "   - Reference: config/k8s/argocd/image-updater/deployment-example.yaml"
 
-
 echo "================ Step 7: Check Status ==================="
 kubectl get nodes -o wide
 kubectl get pods -A -o wide
@@ -208,18 +249,20 @@ echo "     kubectl get applications -n argocd"
 echo "   - ghcr-secret status:"
 echo "     kubectl get secret ghcr-secret -n llm"
 echo "   - ArgoCD UI:"
-echo "     http://149.165.147.30/argocd"
+echo "     http://${SYSTEM_NODE_IP}/argocd"
 echo "   - ArgoCD admin password:"
 echo "     kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
 echo ""
 echo "🌐 Service Access Addresses (after ArgoCD sync):"
-echo "   - LLM Web:    http://149.165.147.30/"
-echo "   - LLM API:    http://149.165.147.30/api"
-echo "   - Grafana:    http://149.165.147.30/grafana"
-echo "   - ArgoCD:     http://149.165.147.30/argocd"
+echo "   - LLM Web:    http://${SYSTEM_NODE_IP}/"
+echo "   - LLM API:    http://${SYSTEM_NODE_IP}/api"
+echo "   - Grafana:    http://${SYSTEM_NODE_IP}/grafana"
+echo "   - ArgoCD:     http://${SYSTEM_NODE_IP}/argocd"
 echo ""
 echo "📝 Next Steps:"
 echo "   1. Ensure Git repository contains all YAML files"
 echo "   2. Check Applications sync status in ArgoCD UI"
 echo "   3. If you need to use Image Updater, configure Docker Registry and Git credentials"
 echo "=========================================================="
+echo ""
+echo "🎉🎉🎉 完整部署流程完成！====="
