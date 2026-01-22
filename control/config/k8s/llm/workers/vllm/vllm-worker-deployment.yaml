@@ -104,5 +104,5 @@ spec:
       volumes:
       - name: model-volume
         hostPath:
-          path: /media/models/vllm
-          type: Directory
+          path: /home/ubuntu/k8s/model
+          type: DirectoryOrCreate
