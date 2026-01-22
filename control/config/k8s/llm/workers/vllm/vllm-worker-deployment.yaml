@@ -13,7 +13,7 @@ metadata:
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
-  replicas: 1
+  replicas: 0  # Disabled: No model files available yet. Set to 1 when ready.
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -41,6 +41,17 @@ spec:
         - name: ghcr-secret
       nodeSelector:
         gpu-node: "true"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - vllm-worker
+                      - trt-worker
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: vllm
         image: ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest
@@ -79,11 +90,11 @@ spec:
           timeoutSeconds: 5
         resources:
           requests:
-            nvidia.com/gpu: 4
+            nvidia.com/gpu: 1
             cpu: "2"
             memory: "16Gi"
           limits:
-            nvidia.com/gpu: 4
+            nvidia.com/gpu: 1
             cpu: "4"
             memory: "16Gi"
         args:

@@ -12,8 +12,10 @@ spec:
       labels:
         app: node-exporter
     spec:
-      nodeSelector:
-        control: "true"
+      # nodeSelector removed to run on all nodes for complete monitoring
+      # If you want to limit to specific nodes, uncomment and set:
+      # nodeSelector:
+      #   system: "true"
       hostNetwork: true
       containers:
       - name: node-exporter

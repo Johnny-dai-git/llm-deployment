@@ -14,7 +14,7 @@ spec:
         app: grafana
     spec:
       nodeSelector:
-        control: "true"
+        system: "true"
       containers:
         - name: grafana
           image: grafana/grafana:latest

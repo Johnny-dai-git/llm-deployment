@@ -15,7 +15,7 @@ spec:
     spec:
       serviceAccountName: prometheus
       nodeSelector:
-        control: "true"
+        system: "true"
       containers:
         - name: prometheus
           image: prom/prometheus:latest
