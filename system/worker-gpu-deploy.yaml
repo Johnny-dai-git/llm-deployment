@@ -20,8 +20,6 @@ spec:
       labels:
         app: llm-worker
     spec:
-      imagePullSecrets:
-        - name: ghcr-secret
       nodeSelector:
         gpu-node: "true"
       containers:

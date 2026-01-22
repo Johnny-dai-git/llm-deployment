@@ -24,6 +24,3 @@ resources:
   
   # Ingress
   - ingress/llm-ingress.yaml
-  
-  # Secrets
-  - secrets/ghcr-secret.yaml

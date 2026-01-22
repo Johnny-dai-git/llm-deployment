@@ -58,6 +58,7 @@ metadata:
     
     # 如果使用私有 registry，需要指定 pull secret（用于 Image Updater 拉取镜像元数据）
     # 注意：这与 Deployment 中的 imagePullSecrets 不同
+    # 注意：如果镜像都是 public 的，则不需要配置此选项
     # argocd-image-updater.argoproj.io/llm-api.pull-secret: pullsecret:argocd/docker-registry-secret#.dockerconfigjson
 
 spec:
@@ -71,8 +72,9 @@ spec:
         app: llm-api
     spec:
       # 如果使用私有 registry，需要配置 imagePullSecrets
-      imagePullSecrets:
-        - name: ghcr-secret  # 替换为你的 registry secret 名称
+      # 注意：如果镜像都是 public 的（如当前配置），则不需要 imagePullSecrets
+      # imagePullSecrets:
+      #   - name: ghcr-secret  # 仅在使用私有镜像时需要
       nodeSelector:
         system: "true"
       containers:

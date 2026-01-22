@@ -20,8 +20,6 @@ spec:
       labels:
         app: llm-router
     spec:
-      imagePullSecrets:
-        - name: ghcr-secret
       nodeSelector:
         system: "true"
       containers:

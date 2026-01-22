@@ -20,8 +20,6 @@ spec:
       labels:
         app: llm-gateway
     spec:
-      imagePullSecrets:
-        - name: ghcr-secret
       nodeSelector:
         system: "true"
       containers:

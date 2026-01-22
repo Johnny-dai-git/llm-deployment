@@ -70,20 +70,6 @@ cd "${CONTROL_DIR}"
 echo "================ Step 1: Apply namespaces ================"
 kubectl apply -f config/k8s/base/namespaces/
 
-echo "================ Step 1.5: Create ghcr-secret ============"
-# Create ghcr.io authentication Secret (for pulling private images)
-echo ">>> Creating ghcr-secret (GitHub Container Registry authentication)..."
-if [ -f "config/k8s/llm/secrets/ghcr-secret.yaml" ]; then
-    kubectl apply -f config/k8s/llm/secrets/ghcr-secret.yaml
-    echo "✔ ghcr-secret created"
-    echo ">>> Verifying ghcr-secret status:"
-    kubectl get secret ghcr-secret -n llm
-    echo "✔ ghcr-secret verification successful"
-else
-    echo "⚠ Warning: config/k8s/llm/secrets/ghcr-secret.yaml file does not exist"
-    echo "   Please ensure GitHub token and username are configured"
-fi
-
 echo "================ Step 2: Label nodes ====================="
 SYSTEM_NODE="system"
 echo "Labeling system node..."
@@ -227,26 +213,20 @@ kubectl get pods -A -o wide
 kubectl get svc -A
 
 echo ""
-echo ">>> Verifying critical Secret status:"
-kubectl get secret ghcr-secret -n llm || echo "⚠ ghcr-secret does not exist, please check"
-
-echo ""
 echo "=========================================================="
 echo "🚀 Infrastructure deployed successfully from SYSTEM NODE (as control plane)!"
 echo ""
 echo "📋 Deployment Notes:"
 echo "   - Infrastructure (ingress-nginx, ArgoCD) has been deployed"
-echo "   - ghcr-secret has been created and can be used to pull ghcr.io private images"
 echo "   - ArgoCD Applications have been created and will sync and deploy all services from Git repository"
 echo "   - All services (LLM Web/API/Router/Workers/Monitoring) will be managed by ArgoCD"
+echo "   - All images are public, no image pull secrets required"
 echo ""
 echo "🔍 Check Status:"
 echo "   - Ingress (using hostNetwork, accessible via node IP):"
 echo "     kubectl get svc -n ingress-nginx"
 echo "   - ArgoCD Applications status:"
 echo "     kubectl get applications -n argocd"
-echo "   - ghcr-secret status:"
-echo "     kubectl get secret ghcr-secret -n llm"
 echo "   - ArgoCD UI:"
 echo "     Access ArgoCD via Ingress (check ingress configuration)"
 echo "   - ArgoCD admin password:"

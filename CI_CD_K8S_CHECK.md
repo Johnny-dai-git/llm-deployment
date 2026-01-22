@@ -5,31 +5,31 @@
 ### 1. Gateway / LLM-API
 - **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/gateway`
 - **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/gateway:latest` ✅
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 2. Router
 - **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/router`
 - **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/router:latest` ✅
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 3. VLLM Worker
 - **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/vllm-worker`
 - **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest` ✅
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 4. TRT Worker
 - **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/trt-worker`
 - **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/trt-worker:latest` ✅
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ✅ Configured
 
 ### 5. Web
 - **CI Build**: `ghcr.io/johnny-dai-git/llm-deployment/web`
 - **K8s Usage**: `ghcr.io/johnny-dai-git/llm-deployment/web:latest` ✅
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ✅ Configured
 
 ## ❌ Issues Found
@@ -39,19 +39,19 @@ These files appear to be old versions or backup configurations:
 
 #### gateway-deploy.yaml
 - **Image**: ✅ `ghcr.io/johnny-dai-git/llm-deployment/gateway:latest`
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ❌ Missing
 - **nodeSelector**: ⚠️ Using `role: system`(should use `system: "true"`）
 
 #### router-deploy.yaml
 - **Image**: ✅ `ghcr.io/johnny-dai-git/llm-deployment/router:latest`
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ❌ Missing
 - **nodeSelector**: ⚠️ Using `role: system`(should use `system: "true"`）
 
 #### worker-gpu-deploy.yaml
 - **Image**: ✅ `ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest`
-- **imagePullSecrets**: ✅ Configured
+- **imagePullSecrets**: ❌ Not needed (public images)
 - **ArgoCD Image Updater**: ❌ Missing
 - **nodeSelector**: ⚠️ Using `role: gpu`(should use `gpu-node: "true"`）
 
@@ -60,4 +60,4 @@ These files appear to be old versions or backup configurations:
 1. **system/ 目录**: 
    - If these are backup configurations, it is recommended to add ArgoCD Image Updater configuration
    - Unify nodeSelector labels (consistent with control/config/k8s/ directory)
-3. **所有部署文件**: 确保都使用 `ghcr.io` 镜像并配置了 `imagePullSecrets`
+2. **所有部署文件**: 确保都使用 `ghcr.io` 镜像（所有镜像都是 public，不需要 imagePullSecrets）

@@ -123,12 +123,11 @@ for dep_info in "${DEPLOYMENTS[@]}"; do
             ALL_DEPLOYMENTS_OK=false
         fi
         
-        # Check imagePullSecrets
-        if grep -q "imagePullSecrets" "$dep_file" && grep -q "ghcr-secret" "$dep_file"; then
-            print_result "pass" "  imagePullSecrets configured (ghcr-secret)"
+        # Check imagePullSecrets (should not be present for public images)
+        if grep -q "imagePullSecrets" "$dep_file"; then
+            print_result "warn" "  imagePullSecrets found (not needed for public images)"
         else
-            print_result "fail" "  imagePullSecrets not configured"
-            ALL_DEPLOYMENTS_OK=false
+            print_result "pass" "  No imagePullSecrets (public images, correct)"
         fi
         
         # Check ArgoCD Image Updater annotations
@@ -153,21 +152,11 @@ done
 # Test 4: Check Secrets configuration
 print_section "Test 4: Secrets Configuration"
 
-# Check ghcr-secret for K8s
+# Check ghcr-secret for K8s (not needed for public images)
 if [ -f "control/config/k8s/llm/secrets/ghcr-secret.yaml" ]; then
-    print_result "pass" "ghcr-secret.yaml exists (for K8s image pull)"
-    if grep -q "Johnny-dai-git" "control/config/k8s/llm/secrets/ghcr-secret.yaml"; then
-        print_result "pass" "  Username configured"
-    else
-        print_result "fail" "  Username not configured"
-    fi
-    if grep -q "ghp_" "control/config/k8s/llm/secrets/ghcr-secret.yaml"; then
-        print_result "pass" "  Token configured"
-    else
-        print_result "warn" "  Token may not be configured (check manually)"
-    fi
+    print_result "warn" "ghcr-secret.yaml exists (not needed for public images, can be removed)"
 else
-    print_result "fail" "ghcr-secret.yaml not found"
+    print_result "pass" "ghcr-secret.yaml not found (correct for public images)"
 fi
 
 # Check docker-registry-secret for ArgoCD Image Updater
@@ -262,9 +251,8 @@ echo "     ${CYAN}docker pull ghcr.io/johnny-dai-git/llm-deployment/gateway:late
 echo ""
 
 echo -e "${BLUE}Step 3:${NC} Test Kubernetes Deployment (if cluster is ready)"
-echo "  1. Apply secrets:"
+echo "  1. Apply secrets (for ArgoCD Image Updater only, not needed for public images):"
 echo "     ${CYAN}cd control${NC}"
-echo "     ${CYAN}kubectl apply -f config/k8s/llm/secrets/ghcr-secret.yaml${NC}"
 echo "     ${CYAN}kubectl apply -f config/k8s/argocd/image-updater/docker-registry-secret.yaml${NC}"
 echo "     ${CYAN}kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml${NC}"
 echo ""

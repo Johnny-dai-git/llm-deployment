@@ -38,8 +38,6 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
-      imagePullSecrets:
-        - name: ghcr-secret
       nodeSelector:
         system: "true"
       affinity:
