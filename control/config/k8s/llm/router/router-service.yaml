@@ -12,6 +12,6 @@ spec:
   ports:
     - name: http
       port: 80            # llm-api will call this port
-      targetPort: 9000    # router container listens on 9000
+      targetPort: 8001    # router container listens on 8001
       protocol: TCP
 

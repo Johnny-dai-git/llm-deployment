@@ -29,7 +29,7 @@ spec:
       annotations:
         # Prometheus scraping annotations
         prometheus.io/scrape: "true"
-        prometheus.io/port: "9000"
+        prometheus.io/port: "8001"
         prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 60
@@ -64,7 +64,7 @@ spec:
 
           ports:
             - name: http
-              containerPort: 9000              # Router internal HTTP server
+              containerPort: 8001              # Router internal HTTP server
               protocol: TCP
 
           env:
@@ -93,7 +93,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 9000
+              port: 8001
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
@@ -102,7 +102,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 9000
+              port: 8001
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
