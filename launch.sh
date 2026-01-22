@@ -65,7 +65,7 @@ echo "===== Phase 4: 部署基础设施（MetalLB, ingress-nginx, ArgoCD）=====
 cd "${CONTROL_DIR}"
 
 echo "================ Step 1: Apply namespaces ================"
-kubectl apply -f namespaces/
+kubectl apply -f config/k8s/base/namespaces/
 
 echo "================ Step 1.5: Create ghcr-secret ============"
 # Create ghcr.io authentication Secret (for pulling private images)
@@ -122,7 +122,7 @@ kubectl apply -f config/k8s/base/metallb/metallb-ip-pool.yaml
 kubectl get configmap -n metallb-system || true
 
 echo "================ Step 4: Deploy ingress-nginx ============"
-kubectl apply -f ingress-nginx/
+kubectl apply -f config/k8s/base/ingress-nginx/
 
 echo "================ Step 5: Deploy ArgoCD ==================="
 # Step 5.1: Create ArgoCD namespace
