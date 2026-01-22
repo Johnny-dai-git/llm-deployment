@@ -249,12 +249,21 @@ else
     echo "⚠ Warning: git-credentials-secret.yaml not found, Image Updater may not be able to write back to Git"
 fi
 
-# Step 6.2: Add Argo Helm repository
+# Step 6.2: Check Helm dependency
+echo ">>> Checking Helm installation..."
+if ! command -v helm >/dev/null 2>&1; then
+    echo "❌ Helm not found. Please install helm before installing ArgoCD Image Updater."
+    echo "   Run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+    exit 1
+fi
+echo "✔ Helm is installed: $(helm version --short)"
+
+# Step 6.3: Add Argo Helm repository
 echo ">>> Adding Argo Helm repository..."
 helm repo add argo https://argoproj.github.io/argo-helm 2>/dev/null || echo "⚠ Helm repo may already exist"
 helm repo update
 
-# Step 6.3: Install ArgoCD Image Updater using Helm
+# Step 6.4: Install ArgoCD Image Updater using Helm
 echo ">>> Installing ArgoCD Image Updater using Helm..."
 ARGOCD_IMAGE_UPDATER_CHART_VERSION="0.10.0"
 if [ -f "config/k8s/argocd/image-updater/values.yaml" ]; then
@@ -272,16 +281,16 @@ else
     echo "✔ Image Updater installed with default values (version: ${ARGOCD_IMAGE_UPDATER_CHART_VERSION})"
 fi
 
-# Step 6.4: Wait for Image Updater to be ready
+# Step 6.5: Wait for Image Updater to be ready
 echo ">>> Waiting for ArgoCD Image Updater to be ready..."
 kubectl wait --for=condition=available --timeout=120s deployment/argocd-image-updater -n argocd 2>/dev/null || \
   echo "⚠ Image Updater may not be ready yet, continuing..."
 
-# Step 6.5: Check status
+# Step 6.6: Check status
 echo ">>> Checking ArgoCD Image Updater status..."
 kubectl get pods -n argocd | grep image-updater || echo "⚠ Image Updater may not be ready yet"
 
-# Step 6.6: Display configuration info
+# Step 6.7: Display configuration info
 echo ""
 echo ">>> 📝 Image Updater Configuration:"
 echo "   - Installed via Helm chart (argo/argocd-image-updater)"

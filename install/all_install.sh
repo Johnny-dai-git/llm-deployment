@@ -128,4 +128,26 @@ else
     echo "⚠️  Docker 服务未运行，请检查"
 fi
 
+##############################################
+# 6. 安装 Helm（所有节点都需要，用于 ArgoCD Image Updater）
+##############################################
+echo "[6/6] 安装 Helm"
+if ! command -v helm >/dev/null 2>&1; then
+    echo "➡ Helm 未安装，正在安装 Helm..."
+    
+    # 方法1：使用官方安装脚本（推荐，适用于所有发行版）
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    
+    # 验证安装
+    if command -v helm >/dev/null 2>&1; then
+        echo "✓ Helm 安装成功"
+        helm version
+    else
+        echo "⚠️  Helm 安装可能失败，请检查"
+    fi
+else
+    echo "➡ Helm 已安装"
+    helm version
+fi
+
 echo "===== all_install.sh 执行完毕 ====="
