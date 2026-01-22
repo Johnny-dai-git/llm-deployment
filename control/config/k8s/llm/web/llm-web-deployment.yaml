@@ -51,6 +51,9 @@ spec:
                       values:
                         - llm-web
                 topologyKey: kubernetes.io/hostname
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
       containers:
         - name: llm-web
           image: ghcr.io/johnny-dai-git/llm-deployment/web:latest
@@ -65,6 +68,9 @@ spec:
             - name: http
               containerPort: 80
               protocol: TCP
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
           readinessProbe:
             httpGet:
               path: /
