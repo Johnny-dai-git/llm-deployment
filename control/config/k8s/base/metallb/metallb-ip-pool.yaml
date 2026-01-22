@@ -5,7 +5,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 149.165.170.36/32   # system node 的公网 IP
+    - VIRTUAL_IP/32   # system node 的公网 IP
 
 ---
 apiVersion: metallb.io/v1beta1
