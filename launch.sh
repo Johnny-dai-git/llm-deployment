@@ -133,6 +133,31 @@ kubectl apply -f config/k8s/argocd-apps/monitoring-application.yaml
 kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
 
 # ------------------------------------------------
+# Step 3.4: 更新 Git Credentials Secret（从本地 key 文件）
+# ------------------------------------------------
+echo "===== Step 3.4: Update Git Credentials from local key file ====="
+
+KEY_FILE="/home/ubuntu/k8s/keys/key"
+GIT_CREDENTIALS_FILE="${CONTROL_DIR}/config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml"
+
+if [ -f "${KEY_FILE}" ]; then
+  echo ">>> Reading GitHub token from ${KEY_FILE}..."
+  # 从 key 文件中提取密码（格式：password: ghp_xxx）
+  GITHUB_TOKEN=$(grep -E "^password:" "${KEY_FILE}" | sed 's/^password:[[:space:]]*//' | tr -d '\n\r')
+  
+  if [ -n "${GITHUB_TOKEN}" ]; then
+    echo ">>> Updating git-credentials-secret.yaml with token..."
+    # 替换 git-credentials-secret.yaml 中的占位符
+    sed -i "s/password: ghp_hpfxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/password: ${GITHUB_TOKEN}/" "${GIT_CREDENTIALS_FILE}"
+    echo "✔ Git credentials updated successfully"
+  else
+    echo "⚠ Warning: Could not extract password from ${KEY_FILE}, using default placeholder"
+  fi
+else
+  echo "⚠ Warning: Key file ${KEY_FILE} not found, using default placeholder in git-credentials-secret.yaml"
+fi
+
+# ------------------------------------------------
 # Step 3.5: ArgoCD Image Updater
 # ------------------------------------------------
 echo "===== Step 3.5: Install ArgoCD Image Updater ====="
