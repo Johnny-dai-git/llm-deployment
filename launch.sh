@@ -118,6 +118,17 @@ helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.dnsPolicy=ClusterFirstWithHostNet \
   --set controller.service.type=ClusterIP
 
+# 等待 ingress-nginx 完全就绪（生产级做法）
+# ⚠️ 重要：必须等待 admission webhook Ready 才能创建 Ingress 资源
+# 否则 Ingress 创建会失败（webhook 未就绪，无法验证 Ingress 资源）
+echo ">>> Waiting for ingress-nginx controller..."
+kubectl rollout status deployment ingress-nginx-controller \
+  -n ingress-nginx --timeout=120s || echo "⚠ Controller rollout may still be in progress..."
+
+echo ">>> Waiting for ingress-nginx admission webhook..."
+kubectl rollout status deployment ingress-nginx-controller-admission \
+  -n ingress-nginx --timeout=120s || echo "⚠ Admission webhook rollout may still be in progress..."
+
 # ------------------------------------------------
 # Step 3: ArgoCD
 # ------------------------------------------------
