@@ -146,10 +146,20 @@ echo ">>> Creating Image Updater secret (git-credentials only)..."
 kubectl apply -f config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml
 
 # 安装 ArgoCD Image Updater（使用 YAML manifest）
-# 先安装基础资源（ConfigMap、ServiceAccount 等），然后应用自定义的 Deployment
+# 先删除所有现有的 Image Updater Deployment（避免冲突）
+echo ">>> Removing existing Image Updater Deployments to avoid conflict..."
+kubectl delete deployment -n argocd argocd-image-updater argocd-image-updater-controller --ignore-not-found=true
+sleep 3
+
+# 安装基础资源（ConfigMap、ServiceAccount、RBAC 等）
 echo ">>> Installing ArgoCD Image Updater base resources..."
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/v0.15.2/manifests/install.yaml || \
   echo "⚠ Official install.yaml may have failed, continuing with custom Deployment..."
+
+# 再次删除官方 Deployment（install.yaml 会创建它，但我们使用自定义的）
+echo ">>> Removing official Deployment (we use custom one)..."
+kubectl delete deployment -n argocd argocd-image-updater --ignore-not-found=true
+sleep 2
 
 # 应用自定义的 Deployment（修复了 command/args 问题）
 echo ">>> Applying custom ArgoCD Image Updater Deployment..."

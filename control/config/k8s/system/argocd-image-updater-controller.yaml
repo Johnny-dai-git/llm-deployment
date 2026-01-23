@@ -51,8 +51,10 @@ spec:
         imagePullPolicy: IfNotPresent
 
         # ✅ 关键修复点：
-        # 不再 override command / args
-        # 使用镜像自带 ENTRYPOINT
+        # argocd-image-updater 是 CLI 工具，必须带子命令 "run" 才能启动主循环
+        # 使用镜像自带 ENTRYPOINT，但需要 args: ["run"] 来启动主循环
+        args:
+          - run
 
         ports:
         - name: health
