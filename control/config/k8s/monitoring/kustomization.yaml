@@ -19,7 +19,7 @@ resources:
   - grafana/grafana-pvc.yaml
   - grafana/grafana-admin-secret.yaml
   - grafana/grafana-datasource-configmap.yaml
-  # Note: grafana-ingress.yaml 已合并到 llm/ingress/unified-ingress.yaml
+  - grafana/grafana-ingress.yaml
   
   # Exporters
   - exporters/node-exporter.yaml

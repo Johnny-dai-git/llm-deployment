@@ -3,10 +3,11 @@
 # =========================
 # 包含路径：
 # - /api → LLM API
-# - /grafana → Grafana Dashboard (需要 rewrite 保留 /grafana 前缀)
 # - / → LLM Web UI
 #
-# 注意：/argocd 路径由独立的 argocd-ingress.yaml 处理
+# 注意：
+# - /argocd 路径由独立的 argocd-ingress.yaml 处理
+# - /grafana 路径由 monitoring/grafana/grafana-ingress.yaml 处理（避免跨 namespace 问题）
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -19,8 +20,6 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-    # Grafana 需要保留 /grafana 前缀（因为配置了 GF_SERVER_SERVE_FROM_SUBPATH: "true"）
-    # 所以不需要 rewrite，直接转发即可
 spec:
   ingressClassName: nginx
   rules:
@@ -35,19 +34,7 @@ spec:
             port:
               number: 8000
       
-      # 路径 2: Grafana Dashboard
-      # 注意：Grafana 配置了 GF_SERVER_SERVE_FROM_SUBPATH: "true"
-      # 所以需要保留 /grafana 前缀，不需要 rewrite
-      - path: /grafana
-        pathType: Prefix
-        backend:
-          service:
-            name: grafana
-            namespace: monitoring
-            port:
-              number: 3000
-      
-      # 路径 3: LLM Web UI (最通用，最后匹配)
+      # 路径 2: LLM Web UI (最通用，最后匹配)
       - path: /
         pathType: Prefix
         backend:

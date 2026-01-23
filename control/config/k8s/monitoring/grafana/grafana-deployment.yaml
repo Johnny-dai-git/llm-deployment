@@ -23,9 +23,9 @@ spec:
           env:
             # 配置 Grafana 使用子路径 /grafana（方案 A：保留前缀）
             # ⚠️ 重要：必须使用完整的外部访问 URL，与用户在浏览器中输入的 URL 完全一致
-            # <PUBLIC_IP> 占位符会在 launch.sh 中自动替换为实际的 public IP
+            # 127.0.0.1 占位符会在 launch.sh 中自动替换为实际的 public IP
             - name: GF_SERVER_ROOT_URL
-              value: "http://<PUBLIC_IP>/grafana"
+              value: "http://127.0.0.1/grafana"
             - name: GF_SERVER_SERVE_FROM_SUBPATH
               value: "true"
             - name: GF_SECURITY_ADMIN_USER
