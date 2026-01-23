@@ -150,42 +150,15 @@ kubectl apply -f config/k8s/argocd-apps/monitoring-application.yaml
 kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
 
 # ------------------------------------------------
-# Step 3.4: 更新 Git Credentials Secret（从本地 key 文件）
-# ------------------------------------------------
-echo "===== Step 3.4: Update Git Credentials from local key file ====="
-
-KEY_FILE="/home/ubuntu/k8s/keys/key"
-GIT_CREDENTIALS_FILE="${CONTROL_DIR}/config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml"
-
-if [ -f "${KEY_FILE}" ]; then
-  echo ">>> Reading GitHub token from ${KEY_FILE}..."
-  # 从 key 文件中提取密码（格式：password: ghp_xxx）
-  GITHUB_TOKEN=$(grep -E "^password:" "${KEY_FILE}" | sed 's/^password:[[:space:]]*//' | tr -d '\n\r')
-  
-  if [ -n "${GITHUB_TOKEN}" ]; then
-    echo ">>> Updating git-credentials-secret.yaml with token..."
-    # 替换 git-credentials-secret.yaml 中的占位符（匹配前面的空格和占位符）
-    sed -i "s/\([[:space:]]*password:[[:space:]]*\)ghp_hpfxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/\1${GITHUB_TOKEN}/" "${GIT_CREDENTIALS_FILE}"
-    echo "✔ Git credentials updated successfully"
-  else
-    echo "⚠ Warning: Could not extract password from ${KEY_FILE}, using default placeholder"
-  fi
-else
-  echo "⚠ Warning: Key file ${KEY_FILE} not found, using default placeholder in git-credentials-secret.yaml"
-fi
-
-# ------------------------------------------------
 # Step 3.5: ArgoCD Image Updater
 # ------------------------------------------------
 echo "===== Step 3.5: Install ArgoCD Image Updater ====="
 
-# 创建必要的 Secret（仅 Git 写回凭证）
-# ⚠️ 重要：所有镜像都是 public 的，不需要 docker-registry-secret
+# ⚠️ 重要：使用 argocd 写回模式，不需要 Git credentials
+# Image Updater 会直接 patch ArgoCD Application，然后 ArgoCD 自动同步 Deployment
+# 所有镜像都是 public 的，不需要 docker-registry-secret
 # Image Updater 可以匿名访问 public registry 的 tag 列表
-# 只需要 git-credentials 来写回 Git 仓库
 # 注意：Image Updater 资源在 argocd-image-updater 目录（手动管理，不通过 ArgoCD）
-echo ">>> Creating Image Updater secret (git-credentials only)..."
-kubectl apply -f config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml
 
 # 安装 ArgoCD Image Updater（使用 YAML manifest）
 # 先删除所有现有的 Image Updater Deployment（避免冲突）
