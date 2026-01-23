@@ -3,6 +3,8 @@ kind: Application
 metadata:
   name: argocd-ingress
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd-infra
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -10,12 +12,18 @@ spec:
   source:
     repoURL: https://github.com/Johnny-dai-git/llm-deployment.git
     targetRevision: main
+    # 只管理 ArgoCD 自身的资源（ingress, basehref）
+    # 不包括 Application 资源和 Image Updater 资源（它们在其他目录）
     path: control/config/k8s/argocd
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
   syncPolicy:
     automated:
+      # prune: true 意味着 Git 删除的资源会被自动删除
+      # 确保此 Application 只管理 ArgoCD 自身的资源
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 

@@ -10,35 +10,28 @@ image:
   tag: v0.15.2
   pullPolicy: IfNotPresent
 
+# 副本数（当前阶段建议使用 1，避免两个 updater 同时写 Git 的 race 风险）
+# 等一切稳定后再开 HA
+replicaCount: 1
+
 # Image Updater 配置
 config:
   # Application API 类型：使用 ArgoCD API
   applicationsAPIKind: "argocd"
 
-  # ArgoCD 连接配置（Image Updater 需要连接到 ArgoCD）
+  # ArgoCD 连接配置（集群内访问的最稳妥配置）
+  # 原因：集群内通常没有完整 TLS 链，gRPC + https + plaintext=false 极容易握手失败
   argocd:
-    # ArgoCD 服务器地址（服务名，不包含端口和协议）
     serverAddress: "argocd-server.argocd.svc.cluster.local"
-    # ArgoCD 服务器端口
-    port: 443
-    # ArgoCD 服务器协议（https 或 http）
-    scheme: https
-    grpcWeb: true
-    insecure: false
-    plaintext: false
+    insecure: true
 
   # 更新间隔（10 秒，用于快速测试；生产环境建议使用 2m）
   interval: 10s
 
-  # 日志配置
-  logLevel: info
-  logFormat: text
-
-  # 健康检查端口
-  healthPort: 8080
-
-  # Metrics 端口
-  metricsPort: 8080
+  # 日志配置（正确的键名：log.level 和 log.format）
+  log:
+    level: info
+    format: text
 
   # Git 写回配置（扁平化格式，符合 Helm chart 要求）
   # 写回方法：git（通过 Git 仓库写回）
@@ -50,22 +43,16 @@ config:
   gitBranch: "main"
   # Git commit 消息模板
   gitCommitMessage: "build: update {{.AppName}} image {{.ImageName}} to {{.NewTag}}\n\n[skip ci]"
-  # 注意：Git credentials 通过 Deployment annotations 中的 write-back-method 指定
+  # 注意：Git credentials 通过 Application annotations 中的 write-back-method 指定
   # 格式：git:secret:argocd/git-credentials
 
-  # Registry 配置
+  # Registry 配置（public image 不需要 credentials）
+  # 注意：如果镜像都是 public 的，则不需要配置 credentials
   registries:
     - name: GitHub Container Registry
       api_url: https://ghcr.io
       prefix: ghcr.io
-      # credentials 格式：pullsecret:namespace/secret-name#key
-      # 这是 ArgoCD Image Updater 支持的标准格式
-      credentials: pullsecret:argocd/docker-registry-secret#.dockerconfigjson
       default: true
-      insecure: false
-
-# 副本数（高可用性）
-replicaCount: 2
 
 # ServiceAccount 配置
 serviceAccount:
@@ -128,6 +115,6 @@ extraEnv: []
 
 # 配置说明：
 # - Git credentials Secret (git-credentials) 需要在安装前创建
-# - Docker registry Secret (docker-registry-secret) 需要在安装前创建
-# - Deployment annotations 中需要引用: git:secret:argocd/git-credentials
+# - 如果镜像都是 public 的，则不需要 Docker registry Secret
+# - Application annotations 中需要引用: git:secret:argocd/git-credentials
 # - 所有配置格式已根据官方 Helm chart 格式修复

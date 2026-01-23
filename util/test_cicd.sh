@@ -160,14 +160,14 @@ else
 fi
 
 # Check docker-registry-secret for ArgoCD Image Updater
-if [ -f "control/config/k8s/argocd/image-updater/docker-registry-secret.yaml" ]; then
+if [ -f "control/config/k8s/argocd-image-updater/image-updater/docker-registry-secret.yaml" ]; then
     print_result "pass" "docker-registry-secret.yaml exists (for ArgoCD Image Updater)"
-    if grep -q "Johnny-dai-git" "control/config/k8s/argocd/image-updater/docker-registry-secret.yaml"; then
+    if grep -q "Johnny-dai-git" "control/config/k8s/argocd-image-updater/image-updater/docker-registry-secret.yaml"; then
         print_result "pass" "  Username configured"
     else
         print_result "warn" "  Username may be placeholder"
     fi
-    if grep -q "ghcr.io" "control/config/k8s/argocd/image-updater/docker-registry-secret.yaml"; then
+    if grep -q "ghcr.io" "control/config/k8s/argocd-image-updater/image-updater/docker-registry-secret.yaml"; then
         print_result "pass" "  Registry URL configured (ghcr.io)"
     else
         print_result "warn" "  Registry URL may not be configured"
@@ -177,14 +177,14 @@ else
 fi
 
 # Check git-credentials-secret for ArgoCD Image Updater
-if [ -f "control/config/k8s/argocd/image-updater/git-credentials-secret.yaml" ]; then
+if [ -f "control/config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml" ]; then
     print_result "pass" "git-credentials-secret.yaml exists (for ArgoCD Image Updater)"
-    if grep -q "Johnny-dai-git" "control/config/k8s/argocd/image-updater/git-credentials-secret.yaml"; then
+    if grep -q "Johnny-dai-git" "control/config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml"; then
         print_result "pass" "  Username configured"
     else
         print_result "warn" "  Username may be placeholder"
     fi
-    if grep -q "argocd-image-updater-config" "control/config/k8s/argocd/image-updater/git-credentials-secret.yaml"; then
+    if grep -q "argocd-image-updater-config" "control/config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml"; then
         print_result "pass" "  ConfigMap configuration included"
     else
         print_result "warn" "  ConfigMap configuration may be missing"
@@ -253,8 +253,8 @@ echo ""
 echo -e "${BLUE}Step 3:${NC} Test Kubernetes Deployment (if cluster is ready)"
 echo "  1. Apply secrets (for ArgoCD Image Updater only, not needed for public images):"
 echo "     ${CYAN}cd control${NC}"
-echo "     ${CYAN}kubectl apply -f config/k8s/argocd/image-updater/docker-registry-secret.yaml${NC}"
-echo "     ${CYAN}kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml${NC}"
+echo "     ${CYAN}kubectl apply -f config/k8s/argocd-image-updater/image-updater/docker-registry-secret.yaml${NC}"
+echo "     ${CYAN}kubectl apply -f config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml${NC}"
 echo ""
 echo "  2. Run deployment script:"
 echo "     ${CYAN}bash run_control${NC}"

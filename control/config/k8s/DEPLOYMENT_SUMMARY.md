@@ -83,19 +83,19 @@ ArgoCD:
 
 应用配置：
 ```bash
-kubectl apply -f config/k8s/argocd/image-updater/docker-registry-secret.yaml
+kubectl apply -f config/k8s/argocd-image-updater/image-updater/docker-registry-secret.yaml
 ```
 
 ### 2. Image Updater Git 凭证配置（必须）
 
-编辑 `argocd/image-updater/git-credentials-secret.yaml`:
+编辑 `argocd-image-updater/image-updater/git-credentials-secret.yaml`:
 - `YOUR_GITHUB_USERNAME`: GitHub 用户名
 - `YOUR_GITHUB_TOKEN`: GitHub Personal Access Token（需要 repo 写权限）
 - `YOUR_EMAIL@example.com`: 用于 Git commit 的邮箱
 
 应用配置：
 ```bash
-kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml
+kubectl apply -f config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml
 ```
 
 ### 3. 更新 Deployment 中的 Registry 地址
