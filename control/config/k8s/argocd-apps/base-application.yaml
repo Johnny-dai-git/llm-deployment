@@ -3,8 +3,11 @@ kind: Application
 metadata:
   name: llm-platform-base
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  # 注意：业务 Application 不建议使用 finalizer
+  # 原因：删除时容易卡住，不利于快速回滚/重建环境
+  # 如果需要"删 Application 就删全部基础设施资源"，可以取消注释；否则建议移除
+  # finalizers:
+  #   - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:

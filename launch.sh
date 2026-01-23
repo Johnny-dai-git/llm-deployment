@@ -137,11 +137,13 @@ kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
 # ------------------------------------------------
 echo "===== Step 3.5: Install ArgoCD Image Updater ====="
 
-# 创建必要的 Secret（Git 写回凭证和 Docker Registry 认证）
+# 创建必要的 Secret（仅 Git 写回凭证）
+# ⚠️ 重要：所有镜像都是 public 的，不需要 docker-registry-secret
+# Image Updater 可以匿名访问 public registry 的 tag 列表
+# 只需要 git-credentials 来写回 Git 仓库
 # 注意：Image Updater 资源在 argocd-image-updater 目录（手动管理，不通过 ArgoCD）
-echo ">>> Creating Image Updater secrets..."
+echo ">>> Creating Image Updater secret (git-credentials only)..."
 kubectl apply -f config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml
-kubectl apply -f config/k8s/argocd-image-updater/image-updater/docker-registry-secret.yaml
 
 # 安装 ArgoCD Image Updater（使用 Helm）
 echo ">>> Installing ArgoCD Image Updater via Helm..."
@@ -152,6 +154,8 @@ helm upgrade --install argocd-image-updater argo/argocd-image-updater \
   --namespace argocd \
   --create-namespace \
   -f config/k8s/argocd-image-updater/image-updater/values.yaml \
+  --set command=null \
+  --set args=null \
   --wait --timeout=5m || echo "⚠ Image Updater installation may still be in progress..."
 
 echo ">>> Waiting for Image Updater to be ready..."
