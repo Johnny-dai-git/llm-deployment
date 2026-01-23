@@ -107,6 +107,9 @@ spec:
           - "0.0.0.0"
           - "--port"
           - "8002"
+          - "--disable-flash-attn"
+          - "--dtype"
+          - "float16"
         volumeMounts:
         - name: model-volume
           mountPath: /model
