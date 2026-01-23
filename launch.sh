@@ -11,7 +11,7 @@ GITHUB_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${SCRIPT_DIR}"
 INSTALL_DIR="${REPO_DIR}/install"
-CONTROL_DIR="${REPO_DIR}/control"
+CONTROL_DIR="${REPO_DIR}/tools"
 
 echo "===== 本地 system 节点完整初始化开始（control plane）====="
 
@@ -53,8 +53,8 @@ echo "===== Phase 4: 集群基础设施 + GPU Bootstrap ====="
 # ------------------------------------------------
 echo "===== Step 0: Install NVIDIA Device Plugin ====="
 
-if [ -f "${CONTROL_DIR}/config/k8s/system/nvidia-device-plugin.yaml" ]; then
-  kubectl apply -f "${CONTROL_DIR}/config/k8s/system/nvidia-device-plugin.yaml"
+if [ -f "${CONTROL_DIR}/system/nvidia-device-plugin.yaml" ]; then
+  kubectl apply -f "${CONTROL_DIR}/system/nvidia-device-plugin.yaml"
 elif [ -f "${REPO_DIR}/script/nvidia-device-plugin.yaml" ]; then
   kubectl apply -f "${REPO_DIR}/script/nvidia-device-plugin.yaml"
 else
@@ -74,7 +74,7 @@ kubectl describe node system | grep -A4 nvidia.com/gpu || \
 # ------------------------------------------------
 echo "===== Step 0.5: Ensure NVIDIA RuntimeClass ====="
 
-RUNTIMECLASS_YAML="${CONTROL_DIR}/config/k8s/system/runtimeclass-nvidia.yaml"
+RUNTIMECLASS_YAML="${CONTROL_DIR}/system/runtimeclass-nvidia.yaml"
 
 if [ -f "${RUNTIMECLASS_YAML}" ]; then
   kubectl get runtimeclass nvidia >/dev/null 2>&1 || \
@@ -100,22 +100,33 @@ kubectl get runtimeclass nvidia -o yaml | grep -A2 "handler:"
 # ------------------------------------------------
 cd "${CONTROL_DIR}"
 
-kubectl apply -f config/k8s/base/namespaces/
+kubectl apply -f base/namespaces/
 
 SYSTEM_NODE="system"
 kubectl label node ${SYSTEM_NODE} system=true ingress=true gpu-node=true --overwrite
 
+
+# ------------------------------------------------
+# Step 1.5: 添加 Helm 仓库
+# ------------------------------------------------
+echo "===== Step 1.5: 添加 Helm 仓库 ====="
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+helm repo add nvidia https://nvidia.github.io/dcgm-exporter/helm-charts || true
+helm repo update
 # ------------------------------------------------
 # Step 2: ingress-nginx
 # ------------------------------------------------
+# 统一配置：所有情况都使用 hostNetwork: true
+echo ">>> 配置 ingress-nginx：使用 hostNetwork（统一配置）"
+
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
 helm repo update
 
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx \
-  --create-namespace \
-  --set controller.hostNetwork=true \
-  --set controller.dnsPolicy=ClusterFirstWithHostNet \
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx  \
+  --namespace ingress-nginx  \
+  --create-namespace  \
+  --set controller.hostNetwork=true  \
+  --set controller.dnsPolicy=ClusterFirstWithHostNet  \
   --set controller.service.type=ClusterIP
 
 # 等待 ingress-nginx 完全就绪（生产级做法）
@@ -141,81 +152,12 @@ echo "✔ Admission webhook configuration ready"
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 sleep 15
-kubectl apply -f config/k8s/argocd/argocd-ingress.yaml
+kubectl apply -f argocd/argocd-ingress.yaml
 
-# ------------------------------------------------
-# Step 3.1: 获取 public IP 并替换 Grafana 占位符
-# ------------------------------------------------
-echo "===== Step 3.1: 获取 public IP 并配置 Grafana ====="
+# 注意：Grafana / Prometheus / ArgoCD 已使用 Ingress + 子路径架构
+# 所有服务的 root_url 都使用 %(protocol)s://%(domain)s/<path>/ 模式
+# 不需要动态获取或替换 IP 地址
 
-# 检测 GPU 类型
-echo ">>> 检测 GPU 类型..."
-GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "")
-IS_RTX=0
-if echo "$GPU_NAME" | grep -qi "RTX"; then
-  IS_RTX=1
-  echo ">>> 检测到 RTX 系列 GPU: ${GPU_NAME}"
-else
-  echo ">>> 检测到非 RTX GPU: ${GPU_NAME:-未知}"
-fi
-
-# 根据 GPU 类型选择不同的 IP 获取方式
-if [ "$IS_RTX" -eq 1 ]; then
-  # RTX GPU：使用 Kubernetes node IP（当前逻辑）
-  echo ">>> 使用 Kubernetes node IP 获取方式（RTX GPU）"
-  PUBLIC_IP=$(kubectl get node ${SYSTEM_NODE} -o jsonpath='{.status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || \
-              kubectl get node ${SYSTEM_NODE} -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || \
-              hostname -I | awk '{print $1}')
-else
-  # 非 RTX GPU：使用 curl ifconfig.me 获取公网 IP
-  echo ">>> 使用 curl ifconfig.me 获取公网 IP（非 RTX GPU）"
-  PUBLIC_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "")
-fi
-
-if [ -z "$PUBLIC_IP" ]; then
-  echo "⚠️  无法获取 public IP，使用默认值 127.0.0.1"
-  PUBLIC_IP="127.0.0.1"
-fi
-
-echo ">>> 检测到 public IP: ${PUBLIC_IP}"
-
-# 替换 Grafana Deployment 中的占位符
-GRAFANA_DEPLOYMENT="${CONTROL_DIR}/config/k8s/monitoring/grafana/grafana-deployment.yaml"
-if [ -f "${GRAFANA_DEPLOYMENT}" ]; then
-  echo ">>> 替换 Grafana Deployment 中的 <PUBLIC_IP> 占位符..."
-  sed -i "s|<PUBLIC_IP>|${PUBLIC_IP}|g" "${GRAFANA_DEPLOYMENT}"
-  echo "✔ Grafana ROOT_URL 已设置为: http://${PUBLIC_IP}/grafana"
-else
-  echo "⚠️  Grafana Deployment 文件不存在: ${GRAFANA_DEPLOYMENT}"
-fi
-
-# 应用 ArgoCD Applications（从新的 argocd-apps 目录）
-kubectl apply -f config/k8s/argocd-apps/base-application.yaml
-kubectl apply -f config/k8s/argocd-apps/llm-application.yaml
-kubectl apply -f config/k8s/argocd-apps/monitoring-application.yaml
-kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
-
-# 应用 ArgoCD ConfigMap（包含同步周期配置）
-echo ">>> Applying ArgoCD ConfigMap (sync period: 10s)..."
-kubectl apply -f config/k8s/argocd/argocd-basehref-configmap.yaml
-
-# 等待 ConfigMap 生效后，重启 application-controller 使同步周期配置生效
-echo ">>> Waiting for ArgoCD to be ready before restarting controller..."
-sleep 10
-echo ">>> Restarting ArgoCD application-controller to apply sync period (10s)..."
-kubectl rollout restart statefulset argocd-application-controller -n argocd || \
-  echo "⚠ Controller restart may have failed, but ConfigMap will be applied on next sync"
-
-# ------------------------------------------------
-# Step 3.5: ArgoCD Image Updater
-# ------------------------------------------------
-echo "===== Step 3.5: Install ArgoCD Image Updater ====="
-
-# ⚠️ 重要：使用 argocd 写回模式，不需要 Git credentials
-# Image Updater 会直接 patch ArgoCD Application，然后 ArgoCD 自动同步 Deployment
-# 所有镜像都是 public 的，不需要 docker-registry-secret
-# Image Updater 可以匿名访问 public registry 的 tag 列表
-# 注意：Image Updater 资源在 argocd-image-updater 目录（手动管理，不通过 ArgoCD）
 
 # 安装 ArgoCD Image Updater（使用 YAML manifest）
 # 先删除所有现有的 Image Updater Deployment（避免冲突）
@@ -235,11 +177,41 @@ sleep 2
 
 # 应用自定义的 Deployment（修复了 command/args 问题）
 echo ">>> Applying custom ArgoCD Image Updater Deployment..."
-kubectl apply -f config/k8s/system/argocd-image-updater-controller.yaml
+kubectl apply -f system/argocd-image-updater-controller.yaml
 
 echo ">>> Waiting for Image Updater to be ready..."
 sleep 10
 kubectl get pods -n argocd | grep image-updater || echo "⚠ Image Updater pods may still be starting..."
+
+# ------------------------------------------------
+# Step 3.6: 安装 Monitoring Stack (Helm)
+# ------------------------------------------------
+echo "===== Step 3.6: Install Monitoring Stack (Helm) ====="
+
+# 确保 Helm repo 已添加（Step 1.5 已添加，这里再次确认）
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
+helm repo add nvidia https://nvidia.github.io/dcgm-exporter/helm-charts || true
+helm repo update
+
+# 安装 kube-prometheus-stack (Grafana + Prometheus)
+echo ">>> Installing kube-prometheus-stack..."
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  -n monitoring \
+  --create-namespace \
+  -f "${REPO_DIR}/helm/monitoring/kps-values.yaml" \
+  --wait --timeout 10m || \
+  echo "⚠ kube-prometheus-stack installation may still be in progress..."
+
+# 安装 DCGM exporter (GPU metrics)
+echo ">>> Installing dcgm-exporter..."
+helm upgrade --install dcgm nvidia/dcgm-exporter \
+  -n monitoring \
+  -f "${REPO_DIR}/helm/monitoring/dcgm/values.yaml" \
+  --wait --timeout 5m || \
+  echo "⚠ dcgm-exporter installation may still be in progress..."
+
+echo ">>> Checking monitoring pods..."
+kubectl get pods -n monitoring || echo "⚠ Monitoring pods may still be starting..."
 
 # ------------------------------------------------
 # Step 4: 状态检查

@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-platform-monitoring-helm
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 57.1.0
+    helm:
+      valueFiles:
+        - $values/helm/monitoring/kps-values.yaml
+      # 或者直接从 Git 仓库读取（推荐）
+      # valueFiles:
+      #   - https://raw.githubusercontent.com/Johnny-dai-git/llm-deployment/main/helm/monitoring/kps-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

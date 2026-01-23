@@ -1,0 +1,17 @@
+# DCGM Exporter Helm Values
+runtimeClassName: nvidia
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+
+resources:
+  limits:
+    nvidia.com/gpu: 1
+  requests:
+    nvidia.com/gpu: 1
+
+# Node Selector（匹配当前配置）
+nodeSelector:
+  system: "true"
+  gpu-node: "true"

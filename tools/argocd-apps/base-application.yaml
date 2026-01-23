@@ -1,12 +1,11 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: llm-platform-monitoring
+  name: llm-platform-base
   namespace: argocd
   # 注意：业务 Application 不建议使用 finalizer
   # 原因：删除时容易卡住，不利于快速回滚/重建环境
-  # 对于监控平台：删除 Application 时不应自动删除监控数据（特别是 PVC）
-  # 如果需要"删 Application 就删全部监控资源"，可以取消注释；否则建议移除
+  # 如果需要"删 Application 就删全部基础设施资源"，可以取消注释；否则建议移除
   # finalizers:
   #   - resources-finalizer.argocd.argoproj.io
 spec:
@@ -14,16 +13,14 @@ spec:
   source:
     repoURL: https://github.com/Johnny-dai-git/llm-deployment.git
     targetRevision: main
-    path: control/config/k8s/monitoring
+    path: tools/config/base
   destination:
     server: https://kubernetes.default.svc
-    namespace: monitoring
+    namespace: default
   syncPolicy:
     automated:
-      # prune: true 是安全的，因为 monitoring 目录下都是标准 Kubernetes 资源
-      # 没有 CRD，prune 行为不会导致不可逆的问题
-      # 注意：如果 Git 中删除 PVC YAML，ArgoCD 会删除 PVC（但数据可能还在 PV 中）
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+

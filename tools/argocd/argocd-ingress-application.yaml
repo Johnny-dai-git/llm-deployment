@@ -14,7 +14,7 @@ spec:
     targetRevision: main
     # 只管理 ArgoCD 自身的资源（ingress, basehref）
     # 不包括 Application 资源和 Image Updater 资源（它们在其他目录）
-    path: control/config/k8s/argocd
+    path: tools/config/argocd
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

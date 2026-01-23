@@ -28,7 +28,7 @@ helm repo update
 helm upgrade --install argocd-image-updater argo/argocd-image-updater \
   -n argocd \
   --create-namespace \
-  -f control/config/k8s/argocd-image-updater/image-updater/values.yaml
+  -f tools/config/argocd-image-updater/image-updater/values.yaml
 
 # 或使用原始 manifest 安装
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
@@ -41,7 +41,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argoc
 ```bash
 # 1. 编辑 docker-registry-secret.yaml，填入实际的 registry 信息
 # 2. 应用 Secret
-kubectl apply -f control/config/k8s/argocd-image-updater/image-updater/docker-registry-secret.yaml
+kubectl apply -f tools/config/argocd-image-updater/image-updater/docker-registry-secret.yaml
 ```
 
 **注意：**
@@ -56,7 +56,7 @@ Image Updater 需要写回 Git 仓库，需要配置 Git 凭证：
 ```bash
 # 1. 编辑 git-credentials-secret.yaml，填入实际的 GitHub 信息
 # 2. 应用 Secret
-kubectl apply -f control/config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml
+kubectl apply -f tools/config/argocd-image-updater/image-updater/git-credentials-secret.yaml
 ```
 
 **注意：**
@@ -129,7 +129,7 @@ metadata:
 
 ```bash
 # 运行配置验证脚本
-bash control/config/k8s/argocd-image-updater/image-updater/validate-config.sh
+bash tools/config/argocd-image-updater/image-updater/validate-config.sh
 ```
 
 此脚本会检查：
@@ -145,7 +145,7 @@ bash control/config/k8s/argocd-image-updater/image-updater/validate-config.sh
 
 ```bash
 # 运行集成测试脚本
-bash control/config/k8s/argocd-image-updater/image-updater/test-integration.sh
+bash tools/config/argocd-image-updater/image-updater/test-integration.sh
 ```
 
 此脚本会检查：
