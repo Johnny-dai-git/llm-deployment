@@ -58,6 +58,9 @@ spec:
 
         ports:
         - name: health
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
           containerPort: 8081
           protocol: TCP
         - name: webhook
@@ -191,8 +194,8 @@ spec:
         livenessProbe:
           httpGet:
             path: /healthz
-            port: 8081
-          initialDelaySeconds: 3
+            port: 8080
+          initialDelaySeconds: 10
           periodSeconds: 30
           timeoutSeconds: 1
           failureThreshold: 3
@@ -200,8 +203,8 @@ spec:
         readinessProbe:
           httpGet:
             path: /readyz
-            port: 8081
-          initialDelaySeconds: 15
+            port: 8080
+          initialDelaySeconds: 10
           periodSeconds: 20
           timeoutSeconds: 1
           failureThreshold: 3
