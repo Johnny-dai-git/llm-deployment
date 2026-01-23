@@ -1,12 +1,14 @@
 # =========================
-# ArgoCD basehref 配置（可选）
+# ArgoCD 配置 ConfigMap
 # =========================
-# 注意：如果 ArgoCD 使用路径前缀 /argocd 访问有问题，需要配置此 ConfigMap
+# 包含以下配置：
+# 1. server.basehref: ArgoCD 路径前缀配置
+# 2. application-controller.app-resync: Application 同步周期（秒），设置为 10 秒
 # 
 # 使用说明：
-# 1. 如果访问 http://149.165.147.30/argocd 时页面加载有问题（CSS/JS 路径错误）
-# 2. 应用此 ConfigMap：kubectl apply -f config/k8s/argocd/argocd-basehref-configmap.yaml
-# 3. 重启 ArgoCD server：kubectl rollout restart deployment argocd-server -n argocd
+# 1. 应用此 ConfigMap：kubectl apply -f config/k8s/argocd/argocd-basehref-configmap.yaml
+# 2. 重启 ArgoCD application-controller 使同步周期生效：
+#    kubectl rollout restart statefulset argocd-application-controller -n argocd
 
 apiVersion: v1
 kind: ConfigMap
@@ -18,4 +20,5 @@ metadata:
     app.kubernetes.io/part-of: argocd
 data:
   server.basehref: "/argocd"
+  application-controller.app-resync: "10"
 

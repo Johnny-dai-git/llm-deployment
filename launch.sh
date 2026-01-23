@@ -149,6 +149,17 @@ kubectl apply -f config/k8s/argocd-apps/llm-application.yaml
 kubectl apply -f config/k8s/argocd-apps/monitoring-application.yaml
 kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
 
+# 应用 ArgoCD ConfigMap（包含同步周期配置）
+echo ">>> Applying ArgoCD ConfigMap (sync period: 10s)..."
+kubectl apply -f config/k8s/argocd/argocd-basehref-configmap.yaml
+
+# 等待 ConfigMap 生效后，重启 application-controller 使同步周期配置生效
+echo ">>> Waiting for ArgoCD to be ready before restarting controller..."
+sleep 10
+echo ">>> Restarting ArgoCD application-controller to apply sync period (10s)..."
+kubectl rollout restart statefulset argocd-application-controller -n argocd || \
+  echo "⚠ Controller restart may have failed, but ConfigMap will be applied on next sync"
+
 # ------------------------------------------------
 # Step 3.5: ArgoCD Image Updater
 # ------------------------------------------------
