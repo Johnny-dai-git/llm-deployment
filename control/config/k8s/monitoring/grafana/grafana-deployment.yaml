@@ -21,11 +21,11 @@ spec:
           ports:
             - containerPort: 3000
           env:
-            # 配置 Grafana 使用子路径 /grafana
-            # 使用相对路径，让 Grafana 从请求的 Host header 中自动获取正确的 domain
-            # 避免重定向循环问题
+            # 配置 Grafana 使用子路径 /grafana（方案 A：保留前缀）
+            # ⚠️ 重要：必须使用完整的外部访问 URL，与用户在浏览器中输入的 URL 完全一致
+            # <PUBLIC_IP> 占位符会在 launch.sh 中自动替换为实际的 public IP
             - name: GF_SERVER_ROOT_URL
-              value: "/grafana"
+              value: "http://<PUBLIC_IP>/grafana"
             - name: GF_SERVER_SERVE_FROM_SUBPATH
               value: "true"
             - name: GF_SECURITY_ADMIN_USER
@@ -56,11 +56,10 @@ spec:
             requests:
               cpu: "100m"
               memory: "256Mi"
-          limits:
-            cpu: "500m"
-            memory: "1Gi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
       volumes:
         - name: grafana-datasource
           configMap:
             name: grafana-datasource
-

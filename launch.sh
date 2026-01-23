@@ -143,6 +143,52 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 sleep 15
 kubectl apply -f config/k8s/argocd/argocd-ingress.yaml
 
+# ------------------------------------------------
+# Step 3.1: 获取 public IP 并替换 Grafana 占位符
+# ------------------------------------------------
+echo "===== Step 3.1: 获取 public IP 并配置 Grafana ====="
+
+# 检测 GPU 类型
+echo ">>> 检测 GPU 类型..."
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "")
+IS_RTX=0
+if echo "$GPU_NAME" | grep -qi "RTX"; then
+  IS_RTX=1
+  echo ">>> 检测到 RTX 系列 GPU: ${GPU_NAME}"
+else
+  echo ">>> 检测到非 RTX GPU: ${GPU_NAME:-未知}"
+fi
+
+# 根据 GPU 类型选择不同的 IP 获取方式
+if [ "$IS_RTX" -eq 1 ]; then
+  # RTX GPU：使用 Kubernetes node IP（当前逻辑）
+  echo ">>> 使用 Kubernetes node IP 获取方式（RTX GPU）"
+  PUBLIC_IP=$(kubectl get node ${SYSTEM_NODE} -o jsonpath='{.status.addresses[?(@.type=="ExternalIP")].address}' 2>/dev/null || \
+              kubectl get node ${SYSTEM_NODE} -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || \
+              hostname -I | awk '{print $1}')
+else
+  # 非 RTX GPU：使用 curl ifconfig.me 获取公网 IP
+  echo ">>> 使用 curl ifconfig.me 获取公网 IP（非 RTX GPU）"
+  PUBLIC_IP=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "")
+fi
+
+if [ -z "$PUBLIC_IP" ]; then
+  echo "⚠️  无法获取 public IP，使用默认值 127.0.0.1"
+  PUBLIC_IP="127.0.0.1"
+fi
+
+echo ">>> 检测到 public IP: ${PUBLIC_IP}"
+
+# 替换 Grafana Deployment 中的占位符
+GRAFANA_DEPLOYMENT="${CONTROL_DIR}/config/k8s/monitoring/grafana/grafana-deployment.yaml"
+if [ -f "${GRAFANA_DEPLOYMENT}" ]; then
+  echo ">>> 替换 Grafana Deployment 中的 <PUBLIC_IP> 占位符..."
+  sed -i "s|<PUBLIC_IP>|${PUBLIC_IP}|g" "${GRAFANA_DEPLOYMENT}"
+  echo "✔ Grafana ROOT_URL 已设置为: http://${PUBLIC_IP}/grafana"
+else
+  echo "⚠️  Grafana Deployment 文件不存在: ${GRAFANA_DEPLOYMENT}"
+fi
+
 # 应用 ArgoCD Applications（从新的 argocd-apps 目录）
 kubectl apply -f config/k8s/argocd-apps/base-application.yaml
 kubectl apply -f config/k8s/argocd-apps/llm-application.yaml
