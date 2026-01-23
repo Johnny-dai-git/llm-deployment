@@ -132,6 +132,31 @@ kubectl apply -f config/k8s/argocd/monitoring-application.yaml
 kubectl apply -f config/k8s/argocd/argocd-ingress-application.yaml
 
 # ------------------------------------------------
+# Step 3.5: ArgoCD Image Updater
+# ------------------------------------------------
+echo "===== Step 3.5: Install ArgoCD Image Updater ====="
+
+# 创建必要的 Secret（Git 写回凭证和 Docker Registry 认证）
+echo ">>> Creating Image Updater secrets..."
+kubectl apply -f config/k8s/argocd/image-updater/git-credentials-secret.yaml
+kubectl apply -f config/k8s/argocd/image-updater/docker-registry-secret.yaml
+
+# 安装 ArgoCD Image Updater（使用 Helm）
+echo ">>> Installing ArgoCD Image Updater via Helm..."
+helm repo add argo https://argoproj.github.io/argo-helm || true
+helm repo update
+
+helm upgrade --install argocd-image-updater argo/argocd-image-updater \
+  --namespace argocd \
+  --create-namespace \
+  -f config/k8s/argocd/image-updater/values.yaml \
+  --wait --timeout=5m || echo "⚠ Image Updater installation may still be in progress..."
+
+echo ">>> Waiting for Image Updater to be ready..."
+sleep 10
+kubectl get pods -n argocd | grep image-updater || echo "⚠ Image Updater pods may still be starting..."
+
+# ------------------------------------------------
 # Step 4: 状态检查
 # ------------------------------------------------
 kubectl get runtimeclass
