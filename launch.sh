@@ -145,18 +145,15 @@ echo "===== Step 3.5: Install ArgoCD Image Updater ====="
 echo ">>> Creating Image Updater secret (git-credentials only)..."
 kubectl apply -f config/k8s/argocd-image-updater/image-updater/git-credentials-secret.yaml
 
-# 安装 ArgoCD Image Updater（使用 Helm）
-echo ">>> Installing ArgoCD Image Updater via Helm..."
-helm repo add argo https://argoproj.github.io/argo-helm || true
-helm repo update
+# 安装 ArgoCD Image Updater（使用 YAML manifest）
+# 先安装基础资源（ConfigMap、ServiceAccount 等），然后应用自定义的 Deployment
+echo ">>> Installing ArgoCD Image Updater base resources..."
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml || \
+  echo "⚠ Official install.yaml may have failed, continuing with custom Deployment..."
 
-helm upgrade --install argocd-image-updater argo/argocd-image-updater \
-  --namespace argocd \
-  --create-namespace \
-  -f config/k8s/argocd-image-updater/image-updater/values.yaml \
-  --set command=null \
-  --set args=null \
-  --wait --timeout=5m || echo "⚠ Image Updater installation may still be in progress..."
+# 应用自定义的 Deployment（修复了 command/args 问题）
+echo ">>> Applying custom ArgoCD Image Updater Deployment..."
+kubectl apply -f config/k8s/system/argocd-image-updater-controller.yaml
 
 echo ">>> Waiting for Image Updater to be ready..."
 sleep 10

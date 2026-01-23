@@ -1,0 +1,253 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-image-updater-controller
+  namespace: argocd
+  labels:
+    app.kubernetes.io/instance: argocd-image-updater
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: argocd-image-updater
+    app.kubernetes.io/version: v1.0.2
+    control-plane: argocd-image-updater-controller
+    helm.sh/chart: argocd-image-updater-1.0.4
+  annotations:
+    meta.helm.sh/release-name: argocd-image-updater
+    meta.helm.sh/release-namespace: argocd
+
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
+
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd-image-updater
+      app.kubernetes.io/name: argocd-image-updater
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: argocd-image-updater
+        app.kubernetes.io/name: argocd-image-updater
+      annotations:
+        checksum/config: 2f219e3c977e54cc643d36605628510ca815a9405b915b1c5ee70a8494034bd5
+
+    spec:
+      serviceAccountName: argocd-image-updater
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 10
+      dnsPolicy: ClusterFirst
+      schedulerName: default-scheduler
+
+      securityContext:
+        runAsNonRoot: true
+
+      containers:
+      - name: argocd-image-updater-controller
+        image: quay.io/argoprojlabs/argocd-image-updater:v0.15.2
+        imagePullPolicy: IfNotPresent
+
+        # ✅ 关键修复点：
+        # 不再 override command / args
+        # 使用镜像自带 ENTRYPOINT
+
+        ports:
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        - name: webhook
+          containerPort: 8082
+          protocol: TCP
+
+        env:
+        - name: ARGOCD_NAMESPACE
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: argocd.namespace
+              optional: true
+        - name: IMAGE_UPDATER_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: interval
+              optional: true
+        - name: IMAGE_UPDATER_LOGLEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: log.level
+              optional: true
+        - name: IMAGE_UPDATER_LOGFORMAT
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: log.format
+              optional: true
+        - name: MAX_CONCURRENT_APPS
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: max_concurrent_apps
+              optional: true
+        - name: MAX_CONCURRENT_RECONCILES
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: max_concurrent_reconciles
+              optional: true
+        - name: GIT_COMMIT_USER
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: git.user
+              optional: true
+        - name: GIT_COMMIT_EMAIL
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: git.email
+              optional: true
+        - name: GIT_COMMIT_SIGNING_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: git.commit-signing-key
+              optional: true
+        - name: GIT_COMMIT_SIGNING_METHOD
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: git.commit-signing-method
+              optional: true
+        - name: GIT_COMMIT_SIGN_OFF
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: git.commit-sign-off
+              optional: true
+        - name: IMAGE_UPDATER_KUBE_EVENTS
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: kube.events
+              optional: true
+        - name: ENABLE_WEBHOOK
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: webhook.enable
+              optional: true
+        - name: WEBHOOK_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: webhook.port
+              optional: true
+        - name: QUAY_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-secret
+              key: webhook.quay-secret
+              optional: true
+        - name: DOCKER_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-secret
+              key: webhook.docker-secret
+              optional: true
+        - name: GHCR_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-secret
+              key: webhook.ghcr-secret
+              optional: true
+        - name: HARBOR_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: argocd-image-updater-secret
+              key: webhook.harbor-secret
+              optional: true
+        - name: WEBHOOK_RATELIMIT_ALLOWED
+          valueFrom:
+            configMapKeyRef:
+              name: argocd-image-updater-config
+              key: webhook.ratelimit-allowed
+              optional: true
+
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 3
+          periodSeconds: 30
+          timeoutSeconds: 1
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 1
+          failureThreshold: 3
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+
+        volumeMounts:
+        - name: image-updater-conf
+          mountPath: /app/config
+        - name: ssh-known-hosts
+          mountPath: /app/config/ssh
+        - name: ssh-config
+          mountPath: /app/.ssh
+        - name: ssh-signing-key
+          mountPath: /app/ssh-keys/id_rsa
+          subPath: sshPrivateKey
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+
+      volumes:
+      - name: image-updater-conf
+        configMap:
+          name: argocd-image-updater-config
+          optional: true
+          items:
+          - key: registries.conf
+            path: registries.conf
+          - key: git.commit-message-template
+            path: commit.template
+      - name: ssh-known-hosts
+        configMap:
+          name: argocd-ssh-known-hosts-cm
+          optional: true
+      - name: ssh-config
+        configMap:
+          name: argocd-image-updater-ssh-config
+          optional: true
+      - name: ssh-signing-key
+        secret:
+          name: ssh-git-creds
+          optional: true
+      - name: tmp
+        emptyDir: {}
