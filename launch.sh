@@ -8,6 +8,9 @@ GITHUB_REPO="llm-deployment"
 GITHUB_BRANCH="main"
 GITHUB_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
 
+# 持久化存储设备（动态检测挂载点）
+STORAGE_DEVICE="/dev/sda4"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${SCRIPT_DIR}"
 INSTALL_DIR="${REPO_DIR}/install"
@@ -105,6 +108,96 @@ kubectl apply -f base/namespaces/
 SYSTEM_NODE="system"
 kubectl label node ${SYSTEM_NODE} system=true ingress=true gpu-node=true --overwrite
 
+# ------------------------------------------------
+# Step 1.2: 安装和配置 local-path-provisioner（持久化存储）
+# ------------------------------------------------
+echo "===== Step 1.2: Install and Configure local-path-provisioner ====="
+
+# 动态检测存储设备的挂载点
+echo ">>> Detecting mount point for ${STORAGE_DEVICE}..."
+MOUNT_POINT=$(findmnt -n -o TARGET "${STORAGE_DEVICE}" 2>/dev/null || \
+              mount | grep "${STORAGE_DEVICE}" | awk '{print $3}' | head -1)
+
+if [ -z "${MOUNT_POINT}" ]; then
+  echo "⚠️  Warning: ${STORAGE_DEVICE} is not mounted, trying alternative detection..."
+  # 尝试通过 lsblk 获取挂载点
+  MOUNT_POINT=$(lsblk -n -o MOUNTPOINT "${STORAGE_DEVICE}" 2>/dev/null | grep -v "^$" | head -1)
+fi
+
+if [ -z "${MOUNT_POINT}" ]; then
+  echo "❌ Error: Cannot detect mount point for ${STORAGE_DEVICE}"
+  echo "   Please ensure ${STORAGE_DEVICE} is mounted before running this script"
+  exit 1
+fi
+
+LOCAL_STORAGE_PATH="${MOUNT_POINT}/k8s"
+echo ">>> Detected mount point: ${MOUNT_POINT}"
+echo ">>> Using storage path: ${LOCAL_STORAGE_PATH}"
+
+# Step 1.2.1: 安装 local-path-provisioner（如果还没安装）
+echo ">>> Installing local-path-provisioner..."
+if ! kubectl get namespace local-path-storage >/dev/null 2>&1; then
+  kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+  echo ">>> Waiting for local-path-provisioner to be ready..."
+  sleep 10
+  kubectl wait --for=condition=ready pod -l app=local-path-provisioner -n local-path-storage --timeout=60s || \
+    echo "⚠ local-path-provisioner may still be starting..."
+else
+  echo "✔ local-path-provisioner namespace already exists"
+fi
+
+# Step 1.2.2: 在宿主机创建目录并授权
+echo ">>> Creating storage directory: ${LOCAL_STORAGE_PATH}"
+sudo mkdir -p "${LOCAL_STORAGE_PATH}"
+sudo chown -R root:root "${LOCAL_STORAGE_PATH}"
+sudo chmod 755 "${LOCAL_STORAGE_PATH}"
+
+# Step 1.2.3: 配置 local-path 使用指定的磁盘路径
+echo ">>> Configuring local-path-provisioner to use: ${LOCAL_STORAGE_PATH}"
+kubectl get configmap local-path-config -n local-path-storage >/dev/null 2>&1 || \
+  kubectl create configmap local-path-config --from-literal=config.json='{"nodePathMap":[{"node":"DEFAULT_PATH_FOR_NON_LISTED_NODES","paths":[]}]}' -n local-path-storage
+
+# 更新 ConfigMap
+cat <<EOFCONFIG | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-path-config
+  namespace: local-path-storage
+data:
+  config.json: |
+    {
+      "nodePathMap":[
+        {
+          "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
+          "paths":[
+            "${LOCAL_STORAGE_PATH}"
+          ]
+        }
+      ]
+    }
+EOFCONFIG
+
+# Step 1.2.4: 重启 local-path-provisioner 使配置生效
+echo ">>> Restarting local-path-provisioner to apply new configuration..."
+kubectl rollout restart daemonset local-path-provisioner -n local-path-storage 2>/dev/null || \
+  kubectl delete pod -l app=local-path-provisioner -n local-path-storage 2>/dev/null || true
+sleep 5
+
+# Step 1.2.5: 设置 local-path 为默认 StorageClass
+echo ">>> Setting local-path as default StorageClass..."
+kubectl patch storageclass local-path \
+  -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}' 2>/dev/null || \
+  echo "⚠ Failed to patch storageclass, may already be default"
+
+# 移除其他 StorageClass 的默认标记（如果有）
+kubectl get storageclass -o name 2>/dev/null | grep -v local-path | xargs -I {} kubectl patch {} \
+  -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}' 2>/dev/null || true
+
+# 验证
+echo ">>> Verifying StorageClass configuration..."
+kubectl get storageclass
+kubectl get pods -n local-path-storage || echo "⚠ local-path-storage pods may still be starting..."
 
 # ------------------------------------------------
 # Step 1.5: 添加 Helm 仓库
