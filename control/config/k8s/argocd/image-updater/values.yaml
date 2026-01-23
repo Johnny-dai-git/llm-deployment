@@ -3,6 +3,13 @@
 # =========================
 # 用于通过 Helm 安装和配置 ArgoCD Image Updater
 
+# 镜像配置（升级到稳定版本 v0.15.2）
+# 从 v1.0.2 升级到 v0.15.2，解决 Application 发现和 annotations 解析问题
+image:
+  repository: quay.io/argoprojlabs/argocd-image-updater
+  tag: v0.15.2
+  pullPolicy: IfNotPresent
+
 # Image Updater 配置
 config:
   # Application API 类型：使用 ArgoCD API
