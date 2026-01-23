@@ -49,7 +49,6 @@ grafana:
       nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
       nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
       nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-      nginx.ingress.kubernetes.io/rewrite-target: /
 
   # Grafana 配置（子路径支持）
   grafana.ini:
@@ -170,7 +169,6 @@ prometheus:
     pathType: Prefix
     hosts: []
     annotations:
-      nginx.ingress.kubernetes.io/rewrite-target: /
 
 # ---------- Alertmanager ----------
 alertmanager:

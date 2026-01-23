@@ -7,8 +7,6 @@ metadata:
     # ArgoCD 专用配置
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    # 路径重写：去掉 /argocd 前缀，转发到后端
-    nginx.ingress.kubernetes.io/rewrite-target: /
     # 增加超时时间（gRPC-Web 可能需要更长时间）
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"

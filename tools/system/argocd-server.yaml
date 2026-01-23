@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-server
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-server
+    spec:
+      serviceAccountName: argocd-server
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+        - name: argocd-server
+          image: quay.io/argoproj/argocd:v3.2.6
+          imagePullPolicy: Always
+
+          # ✅ 关键修复点（只在这里）
+          args:
+            - /usr/local/bin/argocd-server
+            - --rootpath=/argocd
+            - --basehref=/argocd
+
+          ports:
+            - containerPort: 8080
+            - containerPort: 8083
+
+          livenessProbe:
+            httpGet:
+              path: /healthz?full=true
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 30
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 30
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: plugins-home
+              mountPath: /home/argocd
+            - name: tmp
+              mountPath: /tmp
+            - name: argocd-cmd-params-cm
+              mountPath: /home/argocd/params
+
+      volumes:
+        - name: plugins-home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: argocd-cmd-params-cm
+          configMap:
+            name: argocd-cmd-params-cm
+            optional: true

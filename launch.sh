@@ -134,17 +134,10 @@ LOCAL_STORAGE_PATH="${MOUNT_POINT}/k8s"
 echo ">>> Detected mount point: ${MOUNT_POINT}"
 echo ">>> Using storage path: ${LOCAL_STORAGE_PATH}"
 
-# Step 1.2.1: 安装 local-path-provisioner（完全重装以确保 ConfigMap 完整）
+# Step 1.2.1: 安装 local-path-provisioner（确保 ConfigMap 完整，包含 helperPod.yaml）
 echo ">>> Installing local-path-provisioner..."
-if kubectl get namespace local-path-storage >/dev/null 2>&1; then
-  echo ">>> Removing existing local-path-storage to ensure clean installation..."
-  kubectl delete namespace local-path-storage --wait=true --timeout=60s || \
-    echo "⚠ Namespace deletion may still be in progress, continuing..."
-  sleep 5
-fi
-
-# 使用官方完整 YAML 安装（包含 helperPod.yaml）
-echo ">>> Applying official local-path-provisioner YAML..."
+# 无论 namespace 是否存在，都要先应用官方 YAML 确保 ConfigMap 完整
+echo ">>> Applying official local-path-provisioner YAML to ensure ConfigMap is complete..."
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 echo ">>> Waiting for local-path-provisioner to be ready..."
 sleep 10
@@ -157,22 +150,28 @@ sudo mkdir -p "${LOCAL_STORAGE_PATH}"
 sudo chown -R root:root "${LOCAL_STORAGE_PATH}"
 sudo chmod 755 "${LOCAL_STORAGE_PATH}"
 
-# Step 1.2.3: 配置 local-path 使用指定的磁盘路径（只更新 config.json，保留 helperPod.yaml）
+# Step 1.2.3: 配置 local-path 使用指定的磁盘路径
 echo ">>> Configuring local-path-provisioner to use: ${LOCAL_STORAGE_PATH}"
-# 等待 ConfigMap 创建完成
-sleep 3
 
-# 验证 ConfigMap 是否包含 helperPod.yaml
-if ! kubectl get configmap local-path-config -n local-path-storage -o jsonpath='{.data.helperPod\.yaml}' 2>/dev/null | grep -q .; then
-  echo "⚠️  Warning: helperPod.yaml not found in ConfigMap"
-  echo "   Re-applying official YAML to restore helperPod.yaml..."
+# 验证 helperPod.yaml 是否存在（关键：确保 ConfigMap 完整）
+echo ">>> Verifying helperPod.yaml exists in ConfigMap..."
+if ! kubectl get configmap local-path-config -n local-path-storage -o jsonpath='{.data.helperPod\.yaml}' >/dev/null 2>&1; then
+  echo "⚠️  Warning: helperPod.yaml missing in ConfigMap, reapplying official YAML..."
   kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
-  sleep 3
+  sleep 5
 fi
 
-# 只更新 config.json 字段，保留其他字段（如 helperPod.yaml）
-# 使用 kubectl patch 只更新 config.json
+# 使用 kubectl patch 只更新 config.json 字段，保留 helperPod.yaml
+echo ">>> Updating config.json using patch (preserving helperPod.yaml)..."
 kubectl patch configmap local-path-config -n local-path-storage --type merge -p "{\"data\":{\"config.json\":\"{\\\"nodePathMap\\\":[{\\\"node\\\":\\\"DEFAULT_PATH_FOR_NON_LISTED_NODES\\\",\\\"paths\\\":[\\\"${LOCAL_STORAGE_PATH}\\\"]}]}\"}}"
+
+# 再次验证 helperPod.yaml 仍然存在
+if ! kubectl get configmap local-path-config -n local-path-storage -o jsonpath='{.data.helperPod\.yaml}' >/dev/null 2>&1; then
+  echo "❌ Error: helperPod.yaml is still missing after patch. Please check ConfigMap manually."
+  exit 1
+else
+  echo "✔ Verified: helperPod.yaml exists in ConfigMap"
+fi
 
 # Step 1.2.4: 重启 local-path-provisioner 使配置生效
 echo ">>> Restarting local-path-provisioner to apply new configuration..."
@@ -239,8 +238,26 @@ echo "✔ Admission webhook configuration ready"
 # Step 3: ArgoCD
 # ------------------------------------------------
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+# 先安装基础资源（ServiceAccount, RBAC, ConfigMap, Service 等）
+echo ">>> Installing ArgoCD base resources..."
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-sleep 15
+sleep 5
+
+# 删除官方的 argocd-server Deployment（使用自定义的）
+echo ">>> Removing official argocd-server Deployment (using custom one)..."
+kubectl delete deployment -n argocd argocd-server --ignore-not-found=true
+sleep 2
+
+# 应用 ArgoCD 命令行参数 ConfigMap（配置 server.insecure, server.rootpath, server.basehref）
+echo ">>> Applying ArgoCD command parameters ConfigMap..."
+kubectl apply -f "${CONTROL_DIR}/system/argocd-cmd-params-cm.yaml"
+
+# 应用自定义的 ArgoCD Server Deployment（配置了 --rootpath 和 --basehref）
+echo ">>> Applying custom ArgoCD Server Deployment..."
+kubectl apply -f "${CONTROL_DIR}/system/argocd-server.yaml"
+
+sleep 10
 kubectl apply -f argocd/argocd-ingress.yaml
 
 # 注意：Grafana / Prometheus / ArgoCD 已使用 Ingress + 子路径架构
