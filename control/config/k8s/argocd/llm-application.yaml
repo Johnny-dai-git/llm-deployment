@@ -5,12 +5,15 @@ metadata:
   namespace: argocd
   annotations:
     # ArgoCD Image Updater configuration
+    # 启用 Image Updater（必须！没有这个 Image Updater 会忽略此 Application）
+    argocd-image-updater.argoproj.io/enabled: "true"
     # 集中管理所有服务的镜像更新配置
+    # image-list 格式：每行一个，不用逗号
     argocd-image-updater.argoproj.io/image-list: |
-      llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway,
-      router=ghcr.io/johnny-dai-git/llm-deployment/router,
-      vllm-worker=ghcr.io/johnny-dai-git/llm-deployment/vllm-worker,
-      trt-worker=ghcr.io/johnny-dai-git/llm-deployment/trt-worker,
+      llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway
+      router=ghcr.io/johnny-dai-git/llm-deployment/router
+      vllm-worker=ghcr.io/johnny-dai-git/llm-deployment/vllm-worker
+      trt-worker=ghcr.io/johnny-dai-git/llm-deployment/trt-worker
       web=ghcr.io/johnny-dai-git/llm-deployment/web
     # llm-api (gateway) 配置
     argocd-image-updater.argoproj.io/llm-api.update-strategy: name
