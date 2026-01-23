@@ -3,6 +3,7 @@
 import os
 import sys
 import time
+import logging
 import httpx
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
@@ -10,10 +11,38 @@ from typing import List, Optional, Literal
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 
+# =====================
+# 日志配置
+# =====================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
+
+# 从环境变量获取日志级别（可选）
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logger.setLevel(getattr(logging, log_level, logging.INFO))
+
 # ======================
 # 配置
 # ======================
-ROUTER_URL = os.environ.get("ROUTER_URL", "http://llm-router:8001")
+# 从环境变量构建 ROUTER_URL，支持两种方式：
+# 1. 直接设置 ROUTER_URL
+# 2. 通过 ROUTER_SERVICE_HOST 和 ROUTER_SERVICE_PORT 构建
+ROUTER_SERVICE_HOST = os.environ.get("ROUTER_SERVICE_HOST")
+ROUTER_SERVICE_PORT = os.environ.get("ROUTER_SERVICE_PORT", "80")
+
+if ROUTER_SERVICE_HOST:
+    # 使用 Kubernetes Service DNS
+    ROUTER_URL = f"http://{ROUTER_SERVICE_HOST}:{ROUTER_SERVICE_PORT}"
+    logger.info(f"Using ROUTER_URL from ROUTER_SERVICE_HOST: {ROUTER_URL}")
+else:
+    # 回退到直接配置的 ROUTER_URL 或默认值
+    ROUTER_URL = os.environ.get("ROUTER_URL", "http://router-service.llm.svc.cluster.local:80")
+    logger.info(f"Using ROUTER_URL: {ROUTER_URL}")
+
 EXPECTED_API_KEY = os.environ.get("API_KEY")  # 可选，不设置则不校验
 
 app = FastAPI(title="LLM API Gateway")
@@ -78,7 +107,10 @@ def build_prompt_from_messages(messages: List[ChatMessage]) -> str:
 # ======================
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "router_url": ROUTER_URL
+    }
 
 @app.get("/metrics")
 def metrics():
@@ -92,7 +124,11 @@ async def chat_completions(
     req: ChatCompletionRequest,
     authorization: Optional[str] = Header(default=None)
 ):
+    request_id = f"gateway_{int(time.time() * 1000)}"
     endpoint = "/v1/chat/completions"
+    logger.info(f"[{request_id}] Received chat completion request: model={req.model}, "
+                f"messages_count={len(req.messages)}, max_tokens={req.max_tokens}")
+    
     GATEWAY_REQUESTS.labels(endpoint=endpoint).inc()
     start = time.time()
 
@@ -101,6 +137,7 @@ async def chat_completions(
 
     # 2. 把 messages 转成 prompt
     prompt = build_prompt_from_messages(req.messages)
+    logger.debug(f"[{request_id}] Built prompt: length={len(prompt)}")
 
     # 3. 调用 Router 的 /route_generate
     router_payload = {
@@ -110,13 +147,24 @@ async def chat_completions(
     }
 
     try:
+        logger.info(f"[{request_id}] Calling router at {ROUTER_URL}/route_generate")
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(f"{ROUTER_URL}/route_generate", json=router_payload)
             resp.raise_for_status()
+            data = resp.json()
+            logger.info(f"[{request_id}] Received response from router: status={resp.status_code}, "
+                       f"output_length={len(data.get('output', ''))}")
+    except httpx.TimeoutException as e:
+        logger.error(f"[{request_id}] Timeout while calling router: {e}")
+        raise HTTPException(status_code=504, detail=f"Router timeout: {str(e)}")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"[{request_id}] HTTP error from router: status={e.response.status_code}, "
+                    f"response={e.response.text[:200]}")
+        raise HTTPException(status_code=502, detail=f"Router HTTP error: {e.response.status_code}")
     except Exception as e:
+        logger.error(f"[{request_id}] Router error: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail=f"Router error: {str(e)}")
 
-    data = resp.json()
     latency = time.time() - start
     GATEWAY_LATENCY.labels(endpoint=endpoint).observe(latency)
 
@@ -133,5 +181,7 @@ async def chat_completions(
             )
         ]
     )
+    
+    logger.info(f"[{request_id}] Request completed: latency={latency:.3f}s")
     return completion
 
