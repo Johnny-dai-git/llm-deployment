@@ -147,8 +147,8 @@ if [ -f "${KEY_FILE}" ]; then
   
   if [ -n "${GITHUB_TOKEN}" ]; then
     echo ">>> Updating git-credentials-secret.yaml with token..."
-    # 替换 git-credentials-secret.yaml 中的占位符
-    sed -i "s/password: ghp_hpfxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/password: ${GITHUB_TOKEN}/" "${GIT_CREDENTIALS_FILE}"
+    # 替换 git-credentials-secret.yaml 中的占位符（匹配前面的空格和占位符）
+    sed -i "s/\([[:space:]]*password:[[:space:]]*\)ghp_hpfxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/\1${GITHUB_TOKEN}/" "${GIT_CREDENTIALS_FILE}"
     echo "✔ Git credentials updated successfully"
   else
     echo "⚠ Warning: Could not extract password from ${KEY_FILE}, using default placeholder"
