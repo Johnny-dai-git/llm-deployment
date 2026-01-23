@@ -134,17 +134,22 @@ LOCAL_STORAGE_PATH="${MOUNT_POINT}/k8s"
 echo ">>> Detected mount point: ${MOUNT_POINT}"
 echo ">>> Using storage path: ${LOCAL_STORAGE_PATH}"
 
-# Step 1.2.1: 安装 local-path-provisioner（如果还没安装）
+# Step 1.2.1: 安装 local-path-provisioner（完全重装以确保 ConfigMap 完整）
 echo ">>> Installing local-path-provisioner..."
-if ! kubectl get namespace local-path-storage >/dev/null 2>&1; then
-  kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
-  echo ">>> Waiting for local-path-provisioner to be ready..."
-  sleep 10
-  kubectl wait --for=condition=ready pod -l app=local-path-provisioner -n local-path-storage --timeout=60s || \
-    echo "⚠ local-path-provisioner may still be starting..."
-else
-  echo "✔ local-path-provisioner namespace already exists"
+if kubectl get namespace local-path-storage >/dev/null 2>&1; then
+  echo ">>> Removing existing local-path-storage to ensure clean installation..."
+  kubectl delete namespace local-path-storage --wait=true --timeout=60s || \
+    echo "⚠ Namespace deletion may still be in progress, continuing..."
+  sleep 5
 fi
+
+# 使用官方完整 YAML 安装（包含 helperPod.yaml）
+echo ">>> Applying official local-path-provisioner YAML..."
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+echo ">>> Waiting for local-path-provisioner to be ready..."
+sleep 10
+kubectl wait --for=condition=ready pod -l app=local-path-provisioner -n local-path-storage --timeout=60s || \
+  echo "⚠ local-path-provisioner may still be starting..."
 
 # Step 1.2.2: 在宿主机创建目录并授权
 echo ">>> Creating storage directory: ${LOCAL_STORAGE_PATH}"
@@ -152,31 +157,22 @@ sudo mkdir -p "${LOCAL_STORAGE_PATH}"
 sudo chown -R root:root "${LOCAL_STORAGE_PATH}"
 sudo chmod 755 "${LOCAL_STORAGE_PATH}"
 
-# Step 1.2.3: 配置 local-path 使用指定的磁盘路径
+# Step 1.2.3: 配置 local-path 使用指定的磁盘路径（只更新 config.json，保留 helperPod.yaml）
 echo ">>> Configuring local-path-provisioner to use: ${LOCAL_STORAGE_PATH}"
-kubectl get configmap local-path-config -n local-path-storage >/dev/null 2>&1 || \
-  kubectl create configmap local-path-config --from-literal=config.json='{"nodePathMap":[{"node":"DEFAULT_PATH_FOR_NON_LISTED_NODES","paths":[]}]}' -n local-path-storage
+# 等待 ConfigMap 创建完成
+sleep 3
 
-# 更新 ConfigMap
-cat <<EOFCONFIG | kubectl apply -f -
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: local-path-config
-  namespace: local-path-storage
-data:
-  config.json: |
-    {
-      "nodePathMap":[
-        {
-          "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
-          "paths":[
-            "${LOCAL_STORAGE_PATH}"
-          ]
-        }
-      ]
-    }
-EOFCONFIG
+# 验证 ConfigMap 是否包含 helperPod.yaml
+if ! kubectl get configmap local-path-config -n local-path-storage -o jsonpath='{.data.helperPod\.yaml}' 2>/dev/null | grep -q .; then
+  echo "⚠️  Warning: helperPod.yaml not found in ConfigMap"
+  echo "   Re-applying official YAML to restore helperPod.yaml..."
+  kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+  sleep 3
+fi
+
+# 只更新 config.json 字段，保留其他字段（如 helperPod.yaml）
+# 使用 kubectl patch 只更新 config.json
+kubectl patch configmap local-path-config -n local-path-storage --type merge -p "{\"data\":{\"config.json\":\"{\\\"nodePathMap\\\":[{\\\"node\\\":\\\"DEFAULT_PATH_FOR_NON_LISTED_NODES\\\",\\\"paths\\\":[\\\"${LOCAL_STORAGE_PATH}\\\"]}]}\"}}"
 
 # Step 1.2.4: 重启 local-path-provisioner 使配置生效
 echo ">>> Restarting local-path-provisioner to apply new configuration..."

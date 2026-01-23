@@ -6,10 +6,10 @@ serviceMonitor:
   interval: 15s
 
 resources:
-  limits:
-    nvidia.com/gpu: 1
   requests:
-    nvidia.com/gpu: 1
+    memory: 1Gi
+  limits:
+    memory: 1Gi
 
 # Node Selector（匹配当前配置）
 nodeSelector:

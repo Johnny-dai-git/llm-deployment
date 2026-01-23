@@ -14,9 +14,23 @@ grafana:
       cpu: "500m"
       memory: "1Gi"
   
-  # Node Selector（匹配当前配置）
-  nodeSelector:
-    system: "true"
+  # Node Affinity（优先 system node，否则调度到 control-plane）
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: system
+                operator: In
+                values:
+                  - "true"
+
+  # Tolerations（允许调度到 control-plane node）
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
 
   # 管理员凭证（匹配当前配置）
   adminUser: admin
@@ -66,9 +80,23 @@ prometheus:
         cpu: "2"
         memory: "4Gi"
     
-    # Node Selector（匹配当前配置）
-    nodeSelector:
-      system: "true"
+    # Node Affinity（优先 system node，否则调度到 control-plane）
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: system
+                  operator: In
+                  values:
+                    - "true"
+    
+    # Tolerations（允许调度到 control-plane node）
+    tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
     
     # 自定义 scrape configs（保留当前的配置）
     additionalScrapeConfigs:
@@ -148,8 +176,23 @@ prometheus:
 alertmanager:
   enabled: true
   alertmanagerSpec:
-    nodeSelector:
-      system: "true"
+    # Node Affinity（优先 system node，否则调度到 control-plane）
+    affinity:
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: system
+                  operator: In
+                  values:
+                    - "true"
+    
+    # Tolerations（允许调度到 control-plane node）
+    tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
 
 # ---------- Node Exporter（由 Helm 管理）----------
 nodeExporter:
