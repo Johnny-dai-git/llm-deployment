@@ -13,7 +13,7 @@ metadata:
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
     argocd-image-updater.argoproj.io/git-branch: main
 spec:
-  replicas: 2                 # Two replicas for HA
+  replicas: 1                 # Two replicas for HA
   strategy:
     type: RollingUpdate
     rollingUpdate:
