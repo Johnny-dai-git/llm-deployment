@@ -62,7 +62,10 @@ else
   exit 1
 fi
 
-sleep 5
+echo ">>> Waiting for NVIDIA device plugin to be ready..."
+kubectl rollout status ds/nvidia-device-plugin-daemonset -n kube-system --timeout=60s || \
+  echo "⚠ Device plugin rollout may still be in progress, continuing..."
+sleep 2
 kubectl describe node system | grep -A4 nvidia.com/gpu || \
   echo "⚠ GPU not visible yet, continue..."
 
@@ -89,6 +92,8 @@ EOF
 fi
 
 kubectl get runtimeclass nvidia
+echo ">>> RuntimeClass nvidia details:"
+kubectl get runtimeclass nvidia -o yaml | grep -A2 "handler:"
 
 # ------------------------------------------------
 # Step 1: Namespaces / Node labels
@@ -134,4 +139,4 @@ kubectl get nodes -o wide
 kubectl get pods -A -o wide
 
 echo ""
-echo "🎉 GPU-ready Kubernetes cluster bootstrap 完成
+echo "🎉 GPU-ready Kubernetes cluster bootstrap 完成"
