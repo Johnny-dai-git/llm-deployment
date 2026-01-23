@@ -12,6 +12,7 @@ spec:
       labels:
         app: dcgm-exporter
     spec:
+      runtimeClassName: nvidia
       nodeSelector:
         gpu-node: "true"
       hostPID: true
