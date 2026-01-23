@@ -99,7 +99,7 @@ spec:
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
           - "--model"
-          - "/model"
+          - "/model/qwen2.5-0.5b"
           - "--host"
           - "0.0.0.0"
           - "--port"
