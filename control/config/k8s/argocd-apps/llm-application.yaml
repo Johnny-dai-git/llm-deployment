@@ -25,11 +25,10 @@ metadata:
     # web 配置
     argocd-image-updater.argoproj.io/web.update-strategy: name
     argocd-image-updater.argoproj.io/web.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
-    # Git 写回配置（所有服务共用）
-    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
-    # 明确声明写回目标：直接更新 Deployment YAML 文件中的 image 字段
-    argocd-image-updater.argoproj.io/write-back-target: deployment
-    argocd-image-updater.argoproj.io/git-branch: main
+    # ArgoCD 写回配置（推荐：直接 patch Application，无需 Git token）
+    # ⚠️ 重要：使用 argocd 模式可以避免 GitHub Push Protection 问题
+    # Image Updater 会直接 patch ArgoCD Application，然后 ArgoCD 自动同步 Deployment
+    argocd-image-updater.argoproj.io/write-back-method: argocd
   # 注意：业务 Application 不建议使用 finalizer
   # 原因：删除时容易卡住，不利于快速回滚/重建环境
   # 如果需要"删 Application 就删全部业务资源"，可以保留；否则建议移除
