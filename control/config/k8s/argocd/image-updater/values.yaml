@@ -20,8 +20,8 @@ config:
     insecure: false
     plaintext: false
 
-  # 更新间隔（默认 2 分钟）
-  interval: 2m
+  # 更新间隔（10 秒，用于快速测试；生产环境建议使用 2m）
+  interval: 10s
 
   # 日志配置
   logLevel: info
