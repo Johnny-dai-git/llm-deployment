@@ -112,6 +112,13 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# 容器启动命令配置（重要！）
+# 修复：v0.15.2 镜像中没有 /manager 二进制，必须使用镜像自带的 entrypoint
+# 不设置 command/args，让镜像使用自带的 ENTRYPOINT: /usr/local/bin/argocd-image-updater
+# 如果 Helm chart 模板中有默认的 command: ["/manager"]，这个配置会覆盖它
+command: []
+args: []
+
 # 环境变量配置（可选）
 extraEnv: []
 # 示例：
