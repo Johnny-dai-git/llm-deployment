@@ -125,9 +125,15 @@ echo ">>> Waiting for ingress-nginx controller to be ready..."
 kubectl rollout status deployment ingress-nginx-controller \
   -n ingress-nginx --timeout=120s || echo "⚠ Controller rollout may still be in progress..."
 
-echo ">>> Waiting for ingress-nginx admission webhook to be ready..."
-kubectl rollout status deployment ingress-nginx-controller-admission \
-  -n ingress-nginx --timeout=120s || echo "⚠ Admission webhook rollout may still be in progress..."
+# 等待 admission webhook configuration（正确方式）
+# ⚠️ 注意：admission webhook 是 ValidatingWebhookConfiguration，不是 Deployment
+# Webhook = API Server 调用 Service，需要等待 WebhookConfiguration 出现
+echo ">>> Waiting for ingress-nginx admission webhook configuration..."
+until kubectl get validatingwebhookconfiguration ingress-nginx-admission >/dev/null 2>&1; do
+  echo "  Waiting for webhook configuration..."
+  sleep 2
+done
+echo "✔ Admission webhook configuration ready"
 
 # ------------------------------------------------
 # Step 3: ArgoCD
