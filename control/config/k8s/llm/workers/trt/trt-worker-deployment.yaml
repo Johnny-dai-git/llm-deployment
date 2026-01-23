@@ -96,9 +96,12 @@ spec:
             nvidia.com/gpu: 1
             cpu: "4"
             memory: "16Gi"
+        command: ["tritonserver"]
         args:
-          - "--engine"
-          - "/model/engine.plan"
+          - "--model-repository=/model"
+          - "--http-port=8003"
+          - "--grpc-port=8001"
+          - "--metrics-port=8002"
         volumeMounts:
         - name: model-volume
           mountPath: /model
