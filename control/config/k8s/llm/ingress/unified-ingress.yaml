@@ -1,0 +1,91 @@
+# =========================
+# 统一 Ingress - 合并所有路径
+# =========================
+# 包含所有需要暴露的路径：
+# - /argocd → ArgoCD UI
+# - /api → LLM API
+# - /grafana → Grafana Dashboard
+# - / → LLM Web UI
+#
+# 注意：由于 NGINX Ingress Controller 的 rewrite-target 是 Ingress 级别的，
+# 我们使用两个 Ingress 来确保 /argocd 的 rewrite 不影响其他路径
+
+---
+# Ingress 1: 处理 /argocd（需要 rewrite）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-ingress
+  namespace: llm
+  annotations:
+    # ArgoCD 专用配置
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # 路径重写：去掉 /argocd 前缀，转发到后端
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # 增加超时时间（gRPC-Web 可能需要更长时间）
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    # 允许大请求体
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      # ArgoCD UI (最具体，优先匹配)
+      - path: /argocd
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            namespace: argocd
+            port:
+              number: 80
+
+---
+# Ingress 2: 处理其他路径（不需要 rewrite）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: unified-ingress
+  namespace: llm
+  annotations:
+    # 通用配置
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      # 路径 1: LLM API
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-api-service
+            port:
+              number: 8000
+      
+      # 路径 2: Grafana Dashboard
+      - path: /grafana
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            namespace: monitoring
+            port:
+              number: 3000
+      
+      # 路径 3: LLM Web UI (最通用，最后匹配)
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: llm-web-service
+            port:
+              number: 80
