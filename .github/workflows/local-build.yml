@@ -37,15 +37,15 @@ jobs:
         with:
           filters: |
             gateway:
-              - 'gateway/**'
+              - 'app/gateway/**'
             router:
-              - 'system/**'
+              - 'app/router/**'
             vllm-worker:
-              - 'worker/vllm/**'
+              - 'app/worker/vllm/**'
             trt-worker:
-              - 'worker/tensorRT/**'
+              - 'app/worker/tensorRT/**'
             web:
-              - 'web/**'
+              - 'app/web/**'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -71,8 +71,8 @@ jobs:
         if: steps.changes.outputs.gateway == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
-          context: ./gateway
-          file: ./gateway/Dockerfile
+          context: ./app/gateway
+          file: ./app/gateway/Dockerfile
           push: true
           tags: ${{ steps.meta-gateway.outputs.tags }}
           labels: ${{ steps.meta-gateway.outputs.labels }}
@@ -91,8 +91,8 @@ jobs:
         if: steps.changes.outputs.router == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
-          context: ./system
-          file: ./system/Dockerfile
+          context: ./app/router
+          file: ./app/router/Dockerfile
           push: true
           tags: ${{ steps.meta-router.outputs.tags }}
           labels: ${{ steps.meta-router.outputs.labels }}
@@ -111,8 +111,8 @@ jobs:
         if: steps.changes.outputs.vllm-worker == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
-          context: ./worker/vllm
-          file: ./worker/vllm/Dockerfile
+          context: ./app/worker/vllm
+          file: ./app/worker/vllm/Dockerfile
           push: true
           tags: ${{ steps.meta-vllm.outputs.tags }}
           labels: ${{ steps.meta-vllm.outputs.labels }}
@@ -131,8 +131,8 @@ jobs:
         if: steps.changes.outputs.trt-worker == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
-          context: ./worker/tensorRT
-          file: ./worker/tensorRT/Dockerfile
+          context: ./app/worker/tensorRT
+          file: ./app/worker/tensorRT/Dockerfile
           push: true
           tags: ${{ steps.meta-trt.outputs.tags }}
           labels: ${{ steps.meta-trt.outputs.labels }}
@@ -151,8 +151,8 @@ jobs:
         if: steps.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
-          context: ./web
-          file: ./web/Dockerfile
+          context: ./app/web
+          file: ./app/web/Dockerfile
           push: true
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}

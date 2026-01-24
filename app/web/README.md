@@ -22,16 +22,16 @@ web/
 ## Build and Deploy
 
 After modifying files, commit to Git, the workflow will automatically:
-1. Detect changes in `web/**` 目录的变化
+1. Detect changes in `ap./app/web/**` 目录的变化
 2. Build Docker image
-3. Push to `ghcr.io/johnny-dai-git/llm-deployment/web:latest`
+3. Push to `ghcr.io/johnny-dai-git/llm-deploymen./app/web:latest`
 4. Kubernetes will automatically pull the new image and update deployment
 
 ## Local Testing
 
 ```bash
 # Build image
-docker build -t llm-web:test ./web
+docker build -t llm-web:test ./app/web
 
 # Run container
 docker run -p 8080:80 llm-web:test

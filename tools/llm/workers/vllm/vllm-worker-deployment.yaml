@@ -6,14 +6,14 @@ metadata:
   labels:
     app: vllm-worker
   annotations:
-    # ArgoCD Image Updater configuration
     argocd-image-updater.argoproj.io/image-list: vllm-worker=ghcr.io/johnny-dai-git/llm-deployment/vllm-worker
     argocd-image-updater.argoproj.io/vllm-worker.update-strategy: name
     argocd-image-updater.argoproj.io/vllm-worker.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-credentials
     argocd-image-updater.argoproj.io/git-branch: main
+
 spec:
-  replicas: 10  # Auto-scale based on available GPUs (each pod requires 1 GPU)
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -22,74 +22,32 @@ spec:
   selector:
     matchLabels:
       app: vllm-worker
+
   template:
     metadata:
       labels:
         app: vllm-worker
       annotations:
-        # Prometheus scraping annotations
         prometheus.io/scrape: "true"
         prometheus.io/port: "8002"
         prometheus.io/path: "/metrics"
+
     spec:
       runtimeClassName: nvidia
       terminationGracePeriodSeconds: 120
-      securityContext:
-        runAsNonRoot: false
-        runAsUser: 0
-        fsGroup: 0
       nodeSelector:
         gpu-node: "true"
-      affinity:
-        podAntiAffinity:
-          # Preferred (soft) anti-affinity: try to spread pods across nodes, but allow multiple pods per node if GPUs are available
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: app
-                      operator: In
-                      values:
-                        - vllm-worker
-                        - trt-worker
-                topologyKey: kubernetes.io/hostname
+
       containers:
       - name: vllm
         image: ghcr.io/johnny-dai-git/llm-deployment/vllm-worker:latest
         imagePullPolicy: IfNotPresent
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: false
-          capabilities:
-            drop:
-            - ALL
+
         ports:
-          - name: http
-            containerPort: 8002
-            protocol: TCP
-        startupProbe:
-          httpGet:
-            path: /health
-            port: 8002
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 30
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8002
-          initialDelaySeconds: 60
-          periodSeconds: 10
-          timeoutSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8002
-          initialDelaySeconds: 120
-          periodSeconds: 30
-          timeoutSeconds: 5
+        - name: http
+          containerPort: 8002
+          protocol: TCP
+
         resources:
           requests:
             nvidia.com/gpu: 1
@@ -99,20 +57,42 @@ spec:
             nvidia.com/gpu: 1
             cpu: "4"
             memory: "16Gi"
-        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+
+        command:
+          - python3
+          - -m
+          - vllm.entrypoints.openai.api_server
+
         args:
-          - "--model"
-          - "/model/qwen2.5-0.5b"
-          - "--host"
-          - "0.0.0.0"
-          - "--port"
+          # 模型路径
+          - --model
+          - /model/qwen2.5-0.5b
+
+          # 服务监听
+          - --host
+          - 0.0.0.0
+          - --port
           - "8002"
-          - "--disable-flash-attn"
-          - "--dtype"
-          - "float16"
+
+          # RTX 稳定参数
+          - --dtype
+          - float16
+          - --gpu-memory-utilization
+          - "0.8"
+          - --max-model-len
+          - "2048"
+          - --max-num-seqs
+          - "8"
+          - --max-num-batched-tokens
+          - "2048"
+
+          # ✅ 关键：model_tag（位置参数，必须有，不能加 --）
+          - qwen2.5-0.5b
+
         volumeMounts:
         - name: model-volume
           mountPath: /model
+
       volumes:
       - name: model-volume
         hostPath:

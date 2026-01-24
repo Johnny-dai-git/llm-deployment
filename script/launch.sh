@@ -17,8 +17,8 @@ fi
 STORAGE_DEVICE="/dev/sda4"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="${SCRIPT_DIR}"
-INSTALL_DIR="${REPO_DIR}/install"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+INSTALL_DIR="${SCRIPT_DIR}"
 CONTROL_DIR="${REPO_DIR}/tools"
 
 echo "===== Kubernetes control-plane bootstrap start ====="
@@ -44,6 +44,20 @@ sudo bash all_install.sh
 # Phase 3: k8s init
 # ================================================================
 sudo bash system.sh
+
+# ================================================================
+# Phase 3.5: Label node
+# ================================================================
+echo ">>> Labeling node 'system' with system=true"
+kubectl label node system system=true --overwrite || true
+
+# 检测是否为 GPU 节点，如果是则添加 gpu-node=true 标签
+if lspci | grep -i nvidia >/dev/null 2>&1; then
+    echo ">>> GPU detected, labeling node 'system' with gpu-node=true"
+    kubectl label node system gpu-node=true --overwrite || true
+else
+    echo ">>> No GPU detected, skipping gpu-node label"
+fi
 
 # ================================================================
 # Phase 4: infra + GPU

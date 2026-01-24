@@ -42,7 +42,8 @@ grafana:
     ingressClassName: nginx
     path: /grafana
     pathType: Prefix
-    hosts: []
+    hosts:
+      - monitoring.local  # 指定 host 避免与 unified-ingress 冲突
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: "50m"
@@ -173,8 +174,10 @@ prometheus:
     ingressClassName: nginx
     path: /prometheus
     pathType: Prefix
-    hosts: []
+    hosts:
+      - monitoring.local  # 指定 host 避免与 unified-ingress 冲突
     annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
 # ---------- Alertmanager ----------
 alertmanager:
