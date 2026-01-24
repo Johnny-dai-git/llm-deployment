@@ -1,0 +1,25 @@
+# ArgoCD Helm Chart Values
+# 用于通过 Helm 安装和配置 ArgoCD
+
+server:
+  # 关闭 HTTPS 强制（使用 HTTP）
+  insecure: true
+  
+  # 额外的命令行参数（配置子路径访问）
+  extraArgs:
+    - --rootpath=/argocd
+    - --basehref=/argocd
+
+# Ingress 配置
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+  paths:
+    - /argocd

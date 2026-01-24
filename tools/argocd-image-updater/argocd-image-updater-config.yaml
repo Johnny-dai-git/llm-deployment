@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+  namespace: argocd
+data:
+  applicationsAPIKind: argocd
+  argocd.server: argocd-server.argocd.svc.cluster.local
+  argocd.insecure: "true"
+
+  # 👇 关键
+  dryRun: "false"
+
+  interval: 2m
+  log.level: info

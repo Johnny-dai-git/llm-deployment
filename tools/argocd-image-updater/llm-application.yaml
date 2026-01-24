@@ -39,7 +39,7 @@ spec:
   source:
     repoURL: https://github.com/Johnny-dai-git/llm-deployment.git
     targetRevision: main
-    path: tools/config/llm
+    path: tools/llm
   destination:
     server: https://kubernetes.default.svc
     namespace: llm

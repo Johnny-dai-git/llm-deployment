@@ -62,12 +62,12 @@ helm repo update
 # 安装 kube-prometheus-stack
 helm install monitoring prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace \
-  -f helm/monitoring/kps-values.yaml
+  -f tools/helm/monitoring/kps-values.yaml
 
 # 安装 dcgm-exporter
 helm install dcgm nvidia/dcgm-exporter \
   -n monitoring \
-  -f helm/monitoring/dcgm/values.yaml
+  -f tools/helm/monitoring/dcgm/values.yaml
 ```
 
 ## 清理旧资源（可选）

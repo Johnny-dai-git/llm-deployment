@@ -119,7 +119,7 @@ git push
 
 以下文件应该保留：
 
-- `helm/monitoring/kps-values.yaml` - Helm values 配置
-- `helm/monitoring/dcgm/values.yaml` - DCGM Helm values 配置
+- `tools/helm/monitoring/kps-values.yaml` - Helm values 配置
+- `tools/helm/monitoring/dcgm/values.yaml` - DCGM Helm values 配置
 - `tools/config/argocd-apps/monitoring-helm-application.yaml` - 新的 Helm Application
 - `tools/config/argocd-apps/dcgm-helm-application.yaml` - DCGM Helm Application

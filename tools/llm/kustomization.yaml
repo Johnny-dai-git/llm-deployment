@@ -23,6 +23,5 @@ resources:
   - workers/trt/trt-worker-deployment.yaml
   - workers/trt/trt-worker-service.yaml
   
-  # Ingress (统一入口，包含所有路径)
-  - ingress/argocd-ingress.yaml
+  # Ingress
   - ingress/unified-ingress.yaml

@@ -55,6 +55,12 @@ grafana:
     server:
       root_url: "%(protocol)s://%(domain)s/grafana/"
       serve_from_sub_path: true
+    auth:
+      anonymous:
+        enabled: true
+        org_role: Viewer
+      basic:
+        enabled: false
   
   # Persistence（匹配当前配置）
   persistence:
