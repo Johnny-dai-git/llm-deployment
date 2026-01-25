@@ -110,9 +110,35 @@ async def route_generate(req: ChatCompletionRequest):
                 logger.warning(f"[DEBUG] Failed to write log file: {e}")
             # #endregion
             resp.raise_for_status()
-            data = resp.json()
             # #region agent log
-            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:84","message":"Worker response parsed","data":{"has_choices":"choices" in data if isinstance(data,dict) else False},"timestamp":int(time.time()*1000)}
+            try:
+                response_text = resp.text
+                debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:112","message":"Worker response text received","data":{"status_code":resp.status_code,"response_length":len(response_text),"response_preview":response_text[:200]},"timestamp":int(time.time()*1000)}
+                logger.info(f"[DEBUG] {json.dumps(debug_data)}")
+                try:
+                    with open('/tmp/debug.log', 'a') as f:
+                        f.write(json.dumps(debug_data)+'\n')
+                except Exception as e:
+                    logger.warning(f"[DEBUG] Failed to write log file: {e}")
+            except Exception as e:
+                logger.warning(f"[DEBUG] Failed to log response text: {e}")
+            # #endregion
+            try:
+                data = resp.json()
+            except Exception as json_err:
+                # #region agent log
+                debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"router.py:125","message":"Worker response JSON parse error","data":{"status_code":resp.status_code,"json_error":str(json_err),"response_preview":response_text[:500] if 'response_text' in locals() else "N/A"},"timestamp":int(time.time()*1000)}
+                logger.error(f"[DEBUG] {json.dumps(debug_data)}")
+                try:
+                    with open('/tmp/debug.log', 'a') as f:
+                        f.write(json.dumps(debug_data)+'\n')
+                except Exception as e2:
+                    logger.warning(f"[DEBUG] Failed to write log file: {e2}")
+                # #endregion
+                logger.error(f"[{request_id}] worker response JSON parse error: {json_err}")
+                raise HTTPException(status_code=502, detail=f"Worker response parse error: {str(json_err)}")
+            # #region agent log
+            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:135","message":"Worker response parsed","data":{"has_choices":"choices" in data if isinstance(data,dict) else False,"data_keys":list(data.keys()) if isinstance(data,dict) else "not_dict"},"timestamp":int(time.time()*1000)}
             logger.info(f"[DEBUG] {json.dumps(debug_data)}")
             try:
                 with open('/tmp/debug.log', 'a') as f:
