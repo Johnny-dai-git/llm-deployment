@@ -42,8 +42,8 @@ grafana:
     ingressClassName: nginx
     path: /grafana
     pathType: Prefix
-    hosts:
-      - monitoring.local  # 指定 host 避免与 unified-ingress 冲突
+    # hosts:  # 注释掉，允许通过 IP 直接访问
+    #   - monitoring.local
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: "50m"
@@ -59,7 +59,7 @@ grafana:
     auth:
       anonymous:
         enabled: true
-        org_role: Viewer
+        org_role: Admin  # 改为 Admin，匿名用户有完整权限
       basic:
         enabled: false
   
