@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: landing-ingress
+  namespace: llm
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Exact
+        backend:
+          service:
+            name: landing-service
+            port:
+              number: 80

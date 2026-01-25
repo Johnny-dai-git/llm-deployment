@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: landing-page
+  namespace: llm
+data:
+  index.html: |
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>LLM Platform</title>
+    </head>
+    <body>
+      <h2>LLM Platform Entry</h2>
+      <ul>
+        <li><a href="/web">Web UI</a></li>
+        <li><a href="/grafana">Grafana</a></li>
+        <li><a href="/prometheus/">Prometheus</a></li>
+      </ul>
+    </body>
+    </html>
