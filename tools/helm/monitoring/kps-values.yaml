@@ -64,15 +64,14 @@ grafana:
       - ReadWriteOnce
     size: 10Gi
 
-
 # =======================
-# Prometheus
+# Prometheus Ingress
 # =======================
 prometheus:
   enabled: true
 
   prometheusSpec:
-    # 关键：子路径支持（不要写 IP）
+    # Prometheus 自己处理子路径
     routePrefix: /prometheus
     externalUrl: /prometheus
 
@@ -93,60 +92,8 @@ prometheus:
         cpu: "2"
         memory: "4Gi"
 
-    affinity:
-      nodeAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            preference:
-              matchExpressions:
-                - key: system
-                  operator: In
-                  values:
-                    - "true"
-
-    tolerations:
-      - key: "node-role.kubernetes.io/control-plane"
-        operator: "Exists"
-        effect: "NoSchedule"
-
-    additionalScrapeConfigs:
-      - job_name: "dcgm-exporter"
-        kubernetes_sd_configs:
-          - role: endpoints
-            namespaces:
-              names:
-                - monitoring
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_service_name]
-            action: keep
-            regex: dcgm-exporter
-          - source_labels: [__meta_kubernetes_endpoint_port_name]
-            action: keep
-            regex: http
-
-      - job_name: "kubernetes-pods-llm"
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - llm
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-            action: keep
-            regex: true
-          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            regex: ([^:]+)(?::\d+)?;(\d+)
-            replacement: $1:$2
-            target_label: __address__
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
-            action: replace
-            target_label: __metrics_path__
-            regex: (.+)
-          - action: labelmap
-            regex: __meta_kubernetes_pod_label_(.+)
-
     retention: 30d
+
     storageSpec:
       volumeClaimTemplate:
         spec:
@@ -159,11 +106,9 @@ prometheus:
     enabled: true
     ingressClassName: nginx
     paths:
-      - /prometheus(/|$)(.*)
-    pathType: ImplementationSpecific
+      - /prometheus
+    pathType: Prefix
     annotations:
-      nginx.ingress.kubernetes.io/use-regex: "true"
-      nginx.ingress.kubernetes.io/rewrite-target: /$2
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
 

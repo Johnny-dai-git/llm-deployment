@@ -1,21 +1,9 @@
-# =========================
-# 统一 Ingress - 处理其他路径
-# =========================
-# 包含路径：
-# - /api → LLM API
-# - / → LLM Web UI
-#
-# 注意：
-# - /argocd 路径由独立的 argocd-ingress.yaml 处理
-# - /grafana 路径由 monitoring/grafana/grafana-ingress.yaml 处理（避免跨 namespace 问题）
-
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: unified-ingress
   namespace: llm
   annotations:
-    # 通用配置
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
@@ -25,20 +13,12 @@ spec:
   rules:
   - http:
       paths:
-      # 路径 1: LLM API
-      - path: /api
-        pathType: Prefix
-        backend:
-          service:
-            name: llm-api-service
-            port:
-              number: 8000
-      
-      # 路径 2: LLM Web UI (最通用，最后匹配)
-      - path: /
+      # LLM Web UI（显式路径）
+      - path: /web
         pathType: Prefix
         backend:
           service:
             name: llm-web-service
             port:
               number: 80
+
