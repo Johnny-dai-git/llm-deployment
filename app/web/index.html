@@ -118,16 +118,34 @@ async function sendMessage() {
 
         if (!resp.ok) {
             let errorMsg = `API Error: ${resp.status}`;
+            let responseText = '';
             try {
-                const errorData = await resp.json();
-                if (errorData.detail) {
-                    errorMsg += ` ${errorData.detail}`;
-                } else if (errorData.message) {
-                    errorMsg += ` ${errorData.message}`;
+                // Try to read response as text first
+                responseText = await resp.clone().text();
+                console.error('[DEBUG] Error response text:', responseText);
+                
+                // Try to parse as JSON
+                try {
+                    const errorData = JSON.parse(responseText);
+                    console.error('[DEBUG] Error response JSON:', errorData);
+                    if (errorData.detail) {
+                        errorMsg += ` ${errorData.detail}`;
+                    } else if (errorData.message) {
+                        errorMsg += ` ${errorData.message}`;
+                    } else {
+                        errorMsg += ` ${responseText.substring(0, 200)}`;
+                    }
+                } catch (jsonErr) {
+                    // Not JSON, use text
+                    if (responseText) {
+                        errorMsg += ` ${responseText.substring(0, 200)}`;
+                    } else {
+                        errorMsg += ` ${resp.statusText}`;
+                    }
                 }
             } catch (e) {
-                // If response is not JSON, use status text
-                errorMsg += ` ${resp.statusText}`;
+                console.error('[DEBUG] Error reading response:', e);
+                errorMsg += ` ${resp.statusText || 'Unknown error'}`;
             }
             throw new Error(errorMsg);
         }
