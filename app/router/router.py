@@ -48,7 +48,7 @@ def build_workers_list() -> List[WorkerConfig]:
     return [
         WorkerConfig(
             url="http://vllm-worker-service.llm.svc.cluster.local:8002",
-            api_endpoint="/v1/completions",
+            api_endpoint="/v1/chat/completions",
         )
     ]
 
@@ -121,9 +121,13 @@ async def route_generate(req: GenerateRequest):
     worker = pick_worker()
     logger.info(f"[{request_id}] Using worker {worker.url}")
 
+    # Convert prompt to messages format for /v1/chat/completions
+    # Gateway sends a concatenated prompt, we'll treat it as a single user message
     payload = {
         "model": "qwen2.5-0.5b",
-        "prompt": req.prompt,
+        "messages": [
+            {"role": "user", "content": req.prompt}
+        ],
         "max_tokens": req.max_new_tokens,
         "temperature": req.temperature,
     }
@@ -148,10 +152,16 @@ async def route_generate(req: GenerateRequest):
         logger.exception(f"[{request_id}] Worker failed")
         raise HTTPException(status_code=503, detail=str(e))
 
-    # Parse vLLM response
+    # Parse vLLM /v1/chat/completions response
+    # Response format: {"choices": [{"message": {"role": "assistant", "content": "..."}}]}
     output = ""
     if "choices" in data and data["choices"]:
-        output = data["choices"][0].get("text", "")
+        choice = data["choices"][0]
+        if "message" in choice:
+            output = choice["message"].get("content", "")
+        elif "text" in choice:
+            # Fallback for old format
+            output = choice.get("text", "")
 
     latency = time.time() - start
     ROUTER_LATENCY.observe(latency)

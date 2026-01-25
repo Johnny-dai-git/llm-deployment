@@ -108,9 +108,10 @@ def check_api_key(authorization: Optional[str]):
 
 def build_prompt_from_messages(messages: List[ChatMessage]) -> str:
     """
-    ✅ 与 OpenAI / vLLM 完全一致的行为：
+    ✅ 与 OpenAI / vLLM 行为一致：
     - 不插入 [USER] / [ASSISTANT] / [SYSTEM]
-    - 直接按顺序拼接 content
+    - 只拼接 message.content
+    - system message 由 Gateway 控制（如果需要）
     """
     return "\n".join(m.content for m in messages)
 
@@ -120,7 +121,10 @@ def build_prompt_from_messages(messages: List[ChatMessage]) -> str:
 # =====================
 @app.get("/health")
 def health():
-    return {"status": "ok", "router_url": ROUTER_URL}
+    return {
+        "status": "ok",
+        "router_url": ROUTER_URL,
+    }
 
 
 @app.get("/metrics")
@@ -134,9 +138,7 @@ def metrics():
 @app.get("/v1/models")
 def list_models():
     """
-    ✅ WebUI / OpenAI SDK / LangChain 都会调用
-    - 页面加载时调用一次
-    - 不应该 404
+    ✅ WebUI / OpenAI SDK / LangChain 会在页面加载时调用
     """
     return {
         "object": "list",
@@ -169,7 +171,7 @@ async def chat_completions(
     GATEWAY_REQUESTS.labels(endpoint=endpoint).inc()
     start = time.time()
 
-    # 1. API key check (optional)
+    # 1. API key check
     check_api_key(authorization)
 
     # 2. Build prompt
@@ -185,7 +187,8 @@ async def chat_completions(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"{ROUTER_URL}/route_generate", json=payload
+                f"{ROUTER_URL}/route_generate",
+                json=payload,
             )
             resp.raise_for_status()
             data = resp.json()
