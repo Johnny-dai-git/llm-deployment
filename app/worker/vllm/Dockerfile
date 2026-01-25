@@ -1,11 +1,17 @@
-FROM nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.7.0
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
-USER root
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    vim htop curl jq net-tools iputils-ping \
+RUN apt-get update && apt-get install -y \
+    python3.10 python3-pip curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir \
-    loguru python-json-logger prometheus_client nvidia-ml-py3
+RUN python3 -m pip install --upgrade pip
 
+# 关键：让 vllm 自己选择兼容 torch / CUDA
+RUN pip install vllm==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu122
+
+# RTX / 消费级卡稳定性
+ENV VLLM_USE_FLASH_ATTENTION=0
+ENV VLLM_DISABLE_FLASH_ATTN=1
