@@ -196,6 +196,25 @@ helm upgrade --install dcgm nvidia/dcgm-exporter \
   --wait --timeout 5m
 
 # ================================================================
+# Landing Page
+# ================================================================
+echo "===== Deploying Landing Page ====="
+
+echo ">>> Applying Landing Page ConfigMap..."
+kubectl apply -f "${CONTROL_DIR}/llm/landing/landing-page-configmap.yaml"
+
+echo ">>> Applying Landing Page Deployment..."
+kubectl apply -f "${CONTROL_DIR}/llm/landing/landing-nginx-deployment.yaml"
+
+echo ">>> Applying Landing Page Service..."
+kubectl apply -f "${CONTROL_DIR}/llm/landing/landing-service.yaml"
+
+echo ">>> Applying Landing Page Ingress..."
+kubectl apply -f "${CONTROL_DIR}/llm/landing/landing-ingress.yaml"
+
+echo "✅ Landing Page deployed"
+
+# ================================================================
 # Final check
 # ================================================================
 kubectl get pods -A

@@ -13,7 +13,6 @@ spec:
   rules:
   - http:
       paths:
-      # LLM Web UI（显式路径）
       - path: /web
         pathType: Exact
         backend:

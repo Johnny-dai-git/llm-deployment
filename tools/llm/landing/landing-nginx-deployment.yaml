@@ -16,22 +16,18 @@ spec:
       containers:
       - name: nginx
         image: nginx:alpine
+        ports:
+        - containerPort: 80           # ✅ 必须
         volumeMounts:
         - name: html
           mountPath: /usr/share/nginx/html
+        readinessProbe:               # ✅ 强烈建议
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 2
+          periodSeconds: 5
       volumes:
       - name: html
         configMap:
           name: landing-page
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: landing-service
-  namespace: llm
-spec:
-  selector:
-    app: landing-nginx
-  ports:
-  - port: 80
-    targetPort: 80
