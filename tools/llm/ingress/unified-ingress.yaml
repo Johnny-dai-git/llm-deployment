@@ -3,21 +3,24 @@ kind: Ingress
 metadata:
   name: unified-ingress
   namespace: llm
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
 spec:
   ingressClassName: nginx
   rules:
   - http:
       paths:
       - path: /web
-        pathType: Exact
+        pathType: Prefix
         backend:
           service:
             name: llm-web-service
             port:
               number: 80
+
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: api-gateway-service
+            port:
+              number: 8000
 

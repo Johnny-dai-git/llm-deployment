@@ -6,7 +6,7 @@ namespace: llm
 resources:
   # API services
   - api/llm-api-deployment.yaml
-  - api/llm-api-service.yaml
+  - api/api-gateway-service.yaml
   
   # Router services
   - router/router-deployment.yaml

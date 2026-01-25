@@ -64,30 +64,24 @@ spec:
           - vllm.entrypoints.openai.api_server
 
         args:
-          # 模型路径
-          - --model
-          - /model/qwen2.5-0.5b
+          # ========= 模型 =========
+          - --model=/model/qwen2.5-0.5b
+          - --served-model-name=qwen2.5-0.5b
 
-          # 服务监听
-          - --host
-          - 0.0.0.0
-          - --port
-          - "8002"
+          # ========= 服务监听 =========
+          - --host=0.0.0.0
+          - --port=8002
 
-          # RTX 稳定参数
-          - --dtype
-          - float16
-          - --gpu-memory-utilization
-          - "0.8"
-          - --max-model-len
-          - "2048"
-          - --max-num-seqs
-          - "8"
-          - --max-num-batched-tokens
-          - "2048"
+          # ========= 稳定参数（已本地验证） =========
+          - --dtype=float16
+          - --gpu-memory-utilization=0.8
+          - --max-model-len=2048
+          - --max-num-seqs=8
+          - --max-num-batched-tokens=2048
 
-          # ✅ 关键：model_tag（位置参数，必须有，不能加 --）
-          - qwen2.5-0.5b
+          # ========= 关键：避免 Flash / CUDA Graph 崩溃 =========
+          - --disable-cascade-attn
+          - --enforce-eager
 
         volumeMounts:
         - name: model-volume

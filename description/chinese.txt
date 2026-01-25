@@ -101,7 +101,7 @@ CI/DI
 ════════════════════════════ llm 命名空间（业务平面） ═════════════════════════════
 
    ┌─────────────────────────────┐           ┌───────────────────────────────┐
-   │       llm-web-service       │           │         llm-api-service       │
+   │       llm-web-service       │           │      api-gateway-service      │
    │  (ClusterIP，四层 LB)       │           │  (ClusterIP，API 网关)        │
    └───────────┬─────────────────┘           └───────────────┬──────────────┘
                │                                             │
@@ -161,7 +161,7 @@ CI/DI
 
 ══════════════════════ NetworkPolicy（零信任网络边界）═══════════════════════════
 
-   - 只允许 ingress-nginx → llm-api-service  
+   - 只允许 ingress-nginx → api-gateway-service  
    - 只允许 llm-api Pods → router-service  
    - 只允许 router Pods → 各类 worker-service  
    - 默认拒绝跨命名空间访问  
@@ -174,7 +174,7 @@ CI/DI
     │                            Prometheus                               │
     │  抓取：                                                             │
     │   - llm-web-service.llm.svc:       HTTP RPS / 错误率 / 延迟         │
-    │   - llm-api-service.llm.svc:       API QPS / 并发 / 错误类型        │
+    │   - api-gateway-service.llm.svc:    API QPS / 并发 / 错误类型        │
     │   - router-service.llm.svc:        队列长度 / 分发延迟              │
     │   - bert/vllm/trt worker:          tokens/sec / 吞吐 / 延迟         │
     │   - gpu-exporter / node-exporter                                     │

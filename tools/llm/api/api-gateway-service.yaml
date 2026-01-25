@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: llm-api-service
+  name: api-gateway-service
   namespace: llm
   labels:
     app: llm-api
@@ -11,7 +11,6 @@ spec:
     app: llm-api
   ports:
     - name: http
-      port: 8000         # 或你的 llm-api 监听端口
+      port: 8000         # API Gateway 监听端口
       targetPort: 8000
       protocol: TCP
-

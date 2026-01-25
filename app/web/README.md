@@ -41,7 +41,7 @@ docker run -p 8080:80 llm-web:test
 
 ## API Integration
 
-## Frontend accesses `/api` 路径访问后端 API（由 Ingress 路由到 `llm-api-service`）。
+## Frontend accesses `/api` 路径访问后端 API（由 Ingress 路由到 `api-gateway-service`）。
 
 ## Current `index.html` 中的 API 调用示例：
 ```javascript

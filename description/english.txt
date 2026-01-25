@@ -97,7 +97,7 @@ CI/DI
 ════════════════════════════ llm namespace (Business Plane) ═════════════════════
 
    ┌─────────────────────────────┐           ┌───────────────────────────────┐
-   │       llm-web-service       │           │        llm-api-service        │
+   │       llm-web-service       │           │     api-gateway-service       │
    │    (ClusterIP, L4 LB)       │           │    (ClusterIP, API gateway)   │
    └───────────┬─────────────────┘           └───────────────┬──────────────┘
                │                                             │
@@ -158,7 +158,7 @@ CI/DI
 
 ══════════════════════ Zero-Trust Network Policies (llm ns) ═════════════════════
 
-   - Allow ingress-nginx → llm-api-service  
+   - Allow ingress-nginx → api-gateway-service  
    - Allow llm-api Pods → router-service  
    - Allow router Pods → bert/vllm/trt worker-service  
    - Default deny for all cross-namespace traffic  
@@ -170,7 +170,7 @@ CI/DI
     │                             Prometheus                               │
     │  Scrape Targets:                                                     │
     │   - llm-web-service.llm.svc:    HTTP RPS / error rate / latency      │
-    │   - llm-api-service.llm.svc:    API QPS / concurrency / error types  │
+    │   - api-gateway-service.llm.svc: API QPS / concurrency / error types  │
     │   - router-service.llm.svc:     queue depth / dispatch latency       │
     │   - bert/vllm/trt workers:      tokens/sec / throughput / latency    │
     │   - node-exporter:              CPU / RAM / Disk                     │
