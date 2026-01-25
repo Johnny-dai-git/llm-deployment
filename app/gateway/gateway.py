@@ -11,20 +11,17 @@ from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 
-
 # =====================
 # Logging
 # =====================
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("gateway")
 
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logger.setLevel(getattr(logging, log_level, logging.INFO))
-
 
 # =====================
 # Router config
@@ -36,30 +33,32 @@ if ROUTER_SERVICE_HOST:
     ROUTER_URL = f"http://{ROUTER_SERVICE_HOST}:{ROUTER_SERVICE_PORT}"
 else:
     ROUTER_URL = os.environ.get(
-        "ROUTER_URL", "http://router-service.llm.svc.cluster.local:80"
+        "ROUTER_URL",
+        "http://router-service.llm.svc.cluster.local:80",
     )
 
 logger.info(f"Using ROUTER_URL: {ROUTER_URL}")
 
 EXPECTED_API_KEY = os.environ.get("API_KEY")  # optional
 
-
 # =====================
 # FastAPI app
 # =====================
-app = FastAPI(title="LLM API Gateway")
-
+app = FastAPI(title="LLM API Gateway (OpenAI-compatible)")
 
 # =====================
 # Prometheus metrics
 # =====================
 GATEWAY_REQUESTS = Counter(
-    "gateway_requests_total", "Total API requests", ["endpoint"]
+    "gateway_requests_total",
+    "Total API requests",
+    ["endpoint"],
 )
 GATEWAY_LATENCY = Histogram(
-    "gateway_request_latency_seconds", "API request latency", ["endpoint"]
+    "gateway_request_latency_seconds",
+    "API request latency",
+    ["endpoint"],
 )
-
 
 # =====================
 # OpenAI-style schemas
@@ -106,16 +105,6 @@ def check_api_key(authorization: Optional[str]):
         raise HTTPException(status_code=403, detail="Invalid API key")
 
 
-def build_prompt_from_messages(messages: List[ChatMessage]) -> str:
-    """
-    ✅ 与 OpenAI / vLLM 行为一致：
-    - 不插入 [USER] / [ASSISTANT] / [SYSTEM]
-    - 只拼接 message.content
-    - system message 由 Gateway 控制（如果需要）
-    """
-    return "\n".join(m.content for m in messages)
-
-
 # =====================
 # Health & metrics
 # =====================
@@ -138,7 +127,8 @@ def metrics():
 @app.get("/v1/models")
 def list_models():
     """
-    ✅ WebUI / OpenAI SDK / LangChain 会在页面加载时调用
+    WebUI / OpenAI SDK / LangChain
+    页面加载时会调用一次
     """
     return {
         "object": "list",
@@ -171,24 +161,15 @@ async def chat_completions(
     GATEWAY_REQUESTS.labels(endpoint=endpoint).inc()
     start = time.time()
 
-    # 1. API key check
+    # 1. API key check (optional)
     check_api_key(authorization)
 
-    # 2. Build prompt
-    prompt = build_prompt_from_messages(req.messages)
-
-    # 3. Call router
-    payload = {
-        "prompt": prompt,
-        "max_new_tokens": req.max_tokens,
-        "temperature": req.temperature,
-    }
-
+    # 2. Forward request to router (OpenAI Chat format, NO transformation)
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{ROUTER_URL}/route_generate",
-                json=payload,
+                json=req.dict(),
             )
             resp.raise_for_status()
             data = resp.json()
@@ -213,25 +194,9 @@ async def chat_completions(
     latency = time.time() - start
     GATEWAY_LATENCY.labels(endpoint=endpoint).observe(latency)
 
-    output_text = data.get("output", "")
-
     logger.info(
-        f"[{request_id}] done in {latency:.3f}s, output_len={len(output_text)}"
+        f"[{request_id}] done in {latency:.3f}s"
     )
 
-    # 4. OpenAI-style response
-    return ChatCompletionResponse(
-        id=f"chatcmpl-{int(time.time() * 1000)}",
-        created=int(time.time()),
-        model=req.model,
-        choices=[
-            ChatCompletionChoice(
-                index=0,
-                message=ChatMessage(
-                    role="assistant",
-                    content=output_text,
-                ),
-                finish_reason="stop",
-            )
-        ],
-    )
+    # 3. Router already returns OpenAI-style response
+    return ChatCompletionResponse(**data)
