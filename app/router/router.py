@@ -253,11 +253,10 @@ def build_worker_request(worker: WorkerConfig, prompt: str, max_new_tokens: int,
         # vLLM 使用 OpenAI API 格式 (/v1/completions)
         # 必须包含 "model" 字段，值为 vLLM worker 启动时指定的模型路径
         request = {
-            "model": "/model",  # vLLM worker 使用的模型路径（必须字段）
+            "model": "qwen2.5-0.5b",
             "prompt": prompt,
             "max_tokens": max_new_tokens,
-            "temperature": temperature,
-            "stop": None
+            "temperature": temperature
         }
         logger.debug(f"vLLM request: {request}")
         return request
