@@ -159,9 +159,11 @@ prometheus:
     enabled: true
     ingressClassName: nginx
     paths:
-      - /prometheus
-    pathType: Prefix
+      - /prometheus(/|$)(.*)
+    pathType: ImplementationSpecific
     annotations:
+      nginx.ingress.kubernetes.io/use-regex: "true"
+      nginx.ingress.kubernetes.io/rewrite-target: /$2
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
 
