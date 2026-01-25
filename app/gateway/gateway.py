@@ -142,6 +142,13 @@ async def chat_completions(
 ):
     request_id = f"gw_{int(time.time() * 1000)}"
     endpoint = "/v1/chat/completions"
+    # #region agent log
+    import json
+    try:
+        with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:139","message":"Gateway request received","data":{"model":req.model,"messages_count":len(req.messages),"max_tokens":req.max_tokens,"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
 
     logger.info(
         f"[{request_id}] model={req.model}, messages={len(req.messages)}, max_tokens={req.max_tokens}"
@@ -160,19 +167,56 @@ async def chat_completions(
         "temperature": req.temperature,
     }
 
+    # #region agent log
+    import json
+    try:
+        with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:163","message":"Before router call","data":{"router_url":ROUTER_URL,"payload_keys":list(payload.keys())},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
+            # #region agent log
+            try:
+                with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:166","message":"Calling router","data":{"url":f"{ROUTER_URL}/route_generate"},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             resp = await client.post(
                 f"{ROUTER_URL}/route_generate",
                 json=payload,
             )
+            # #region agent log
+            try:
+                with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:172","message":"Router response received","data":{"status_code":resp.status_code,"headers":dict(resp.headers)},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
             resp.raise_for_status()
             data = resp.json()
+            # #region agent log
+            try:
+                with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:175","message":"Router response parsed","data":{"has_choices":"choices" in data,"choices_count":len(data.get("choices",[]))},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
 
     except httpx.TimeoutException:
+        # #region agent log
+        try:
+            with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"gateway.py:178","message":"Router timeout","data":{},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
         raise HTTPException(status_code=504, detail="Router timeout")
 
     except httpx.HTTPStatusError as e:
+        # #region agent log
+        try:
+            with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"gateway.py:183","message":"Router HTTP error","data":{"status_code":e.response.status_code,"response_text":e.response.text[:200] if hasattr(e.response,'text') else None},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
         logger.error(f"[{request_id}] router HTTP error {e.response.status_code}")
         raise HTTPException(
             status_code=502,
@@ -180,6 +224,12 @@ async def chat_completions(
         )
 
     except Exception as e:
+        # #region agent log
+        try:
+            with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:191","message":"Router exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e)},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
         logger.exception(f"[{request_id}] router error")
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -188,15 +238,39 @@ async def chat_completions(
 
     # 3. Parse Router OpenAI-style response
     output_text = ""
+    # #region agent log
+    try:
+        with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:196","message":"Before parsing response","data":{"data_keys":list(data.keys()) if isinstance(data,dict) else "not_dict"},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
     if "choices" in data and data["choices"]:
         choice = data["choices"][0]
         if "message" in choice and "content" in choice["message"]:
             output_text = choice["message"]["content"]
+            # #region agent log
+            try:
+                with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:201","message":"Extracted output text","data":{"output_length":len(output_text)},"timestamp":int(time.time()*1000)})+'\n')
+            except: pass
+            # #endregion
 
     if not output_text:
+        # #region agent log
+        try:
+            with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:207","message":"Empty response from router","data":{"data":str(data)[:500]},"timestamp":int(time.time()*1000)})+'\n')
+        except: pass
+        # #endregion
         raise HTTPException(status_code=502, detail="Empty response from router")
 
     logger.info(f"[{request_id}] done in {latency:.3f}s")
+    # #region agent log
+    try:
+        with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:220","message":"Gateway returning success","data":{"latency":latency,"output_length":len(output_text)},"timestamp":int(time.time()*1000)})+'\n')
+    except: pass
+    # #endregion
 
     # 4. Return OpenAI-compatible response
     return ChatCompletionResponse(
