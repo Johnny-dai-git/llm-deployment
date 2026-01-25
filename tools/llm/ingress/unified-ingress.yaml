@@ -15,7 +15,7 @@ spec:
       paths:
       # LLM Web UI（显式路径）
       - path: /web
-        pathType: Prefix
+        pathType: Exact
         backend:
           service:
             name: llm-web-service
