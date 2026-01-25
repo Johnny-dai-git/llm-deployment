@@ -96,13 +96,18 @@ def check_api_key(authorization: Optional[str]):
     if EXPECTED_API_KEY is None:
         return
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=401,
-            detail="Missing or invalid Authorization header",
-        )
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     token = authorization.split(" ", 1)[1].strip()
     if token != EXPECTED_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API key")
+
+
+def build_prompt(messages: List[ChatMessage]) -> str:
+    """
+    OpenAI Chat → plain prompt
+    system / user / assistant 全部按顺序拼接
+    """
+    return "\n".join(m.content for m in messages)
 
 
 # =====================
@@ -110,10 +115,7 @@ def check_api_key(authorization: Optional[str]):
 # =====================
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "router_url": ROUTER_URL,
-    }
+    return {"status": "ok", "router_url": ROUTER_URL}
 
 
 @app.get("/metrics")
@@ -126,10 +128,6 @@ def metrics():
 # =====================
 @app.get("/v1/models")
 def list_models():
-    """
-    WebUI / OpenAI SDK / LangChain
-    页面加载时会调用一次
-    """
     return {
         "object": "list",
         "data": [
@@ -154,34 +152,38 @@ async def chat_completions(
     endpoint = "/v1/chat/completions"
 
     logger.info(
-        f"[{request_id}] model={req.model}, "
-        f"messages={len(req.messages)}, max_tokens={req.max_tokens}"
+        f"[{request_id}] model={req.model}, messages={len(req.messages)}, max_tokens={req.max_tokens}"
     )
 
     GATEWAY_REQUESTS.labels(endpoint=endpoint).inc()
     start = time.time()
 
-    # 1. API key check (optional)
     check_api_key(authorization)
 
-    # 2. Forward request to router (OpenAI Chat format, NO transformation)
+    # 1. Build prompt
+    prompt = build_prompt(req.messages)
+
+    # 2. Call router with router-native format
+    payload = {
+        "prompt": prompt,
+        "max_new_tokens": req.max_tokens,
+        "temperature": req.temperature,
+    }
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{ROUTER_URL}/route_generate",
-                json=req.dict(),
+                json=payload,
             )
             resp.raise_for_status()
             data = resp.json()
 
     except httpx.TimeoutException:
-        logger.error(f"[{request_id}] router timeout")
         raise HTTPException(status_code=504, detail="Router timeout")
 
     except httpx.HTTPStatusError as e:
-        logger.error(
-            f"[{request_id}] router HTTP error {e.response.status_code}"
-        )
+        logger.error(f"[{request_id}] router HTTP error {e.response.status_code}")
         raise HTTPException(
             status_code=502,
             detail=f"Router HTTP error: {e.response.status_code}",
@@ -189,14 +191,33 @@ async def chat_completions(
 
     except Exception as e:
         logger.exception(f"[{request_id}] router error")
-        raise HTTPException(status_code=502, detail=f"Router error: {str(e)}")
+        raise HTTPException(status_code=502, detail=str(e))
 
     latency = time.time() - start
     GATEWAY_LATENCY.labels(endpoint=endpoint).observe(latency)
 
-    logger.info(
-        f"[{request_id}] done in {latency:.3f}s"
-    )
+    # 3. Parse Router OpenAI-style response
+    output_text = ""
+    if "choices" in data and data["choices"]:
+        choice = data["choices"][0]
+        if "message" in choice and "content" in choice["message"]:
+            output_text = choice["message"]["content"]
 
-    # 3. Router already returns OpenAI-style response
-    return ChatCompletionResponse(**data)
+    if not output_text:
+        raise HTTPException(status_code=502, detail="Empty response from router")
+
+    logger.info(f"[{request_id}] done in {latency:.3f}s")
+
+    # 4. Return OpenAI-compatible response
+    return ChatCompletionResponse(
+        id=data.get("id", f"chatcmpl-{int(time.time() * 1000)}"),
+        created=int(time.time()),
+        model=req.model,
+        choices=[
+            ChatCompletionChoice(
+                index=0,
+                message=ChatMessage(role="assistant", content=output_text),
+                finish_reason="stop",
+            )
+        ],
+    )
