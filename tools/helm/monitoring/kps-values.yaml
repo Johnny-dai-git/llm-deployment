@@ -174,7 +174,6 @@ prometheus:
     ingressClassName: nginx
     path: /prometheus
     pathType: Prefix
-    hosts: []   # 允许 IP 访问（demo 场景）
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
