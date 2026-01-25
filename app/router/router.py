@@ -33,7 +33,11 @@ ROUTER_LATENCY = Histogram("router_latency_seconds", "Router latency")
 # =====================
 # Worker config
 # =====================
-WORKER_URL = "http://vllm-worker-service.llm.svc.cluster.local:8002"
+import os
+VLLM_WORKER_HOST = os.environ.get("VLLM_WORKER_HOST", "vllm-worker-service.llm.svc.cluster.local")
+VLLM_WORKER_PORT = os.environ.get("VLLM_WORKER_PORT", "8002")
+WORKER_URL = f"http://{VLLM_WORKER_HOST}:{VLLM_WORKER_PORT}"
+logger.info(f"Using WORKER_URL: {WORKER_URL}")
 
 # =====================
 # OpenAI schemas
@@ -71,55 +75,73 @@ async def route_generate(req: ChatCompletionRequest):
     logger.info(f"[{request_id}] routing to vLLM")
     # #region agent log
     import json
+    debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:66","message":"Router request received","data":{"worker_url":WORKER_URL,"model":req.model,"messages_count":len(req.messages)},"timestamp":int(time.time()*1000)}
+    logger.info(f"[DEBUG] {json.dumps(debug_data)}")
     try:
-        with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:66","message":"Router request received","data":{"worker_url":WORKER_URL,"model":req.model,"messages_count":len(req.messages)},"timestamp":int(time.time()*1000)})+'\n')
-    except: pass
+        with open('/tmp/debug.log', 'a') as f:
+            f.write(json.dumps(debug_data)+'\n')
+    except Exception as e:
+        logger.warning(f"[DEBUG] Failed to write log file: {e}")
     # #endregion
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # #region agent log
+            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:74","message":"Calling worker","data":{"url":f"{WORKER_URL}/v1/chat/completions"},"timestamp":int(time.time()*1000)}
+            logger.info(f"[DEBUG] {json.dumps(debug_data)}")
             try:
-                with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:74","message":"Calling worker","data":{"url":f"{WORKER_URL}/v1/chat/completions"},"timestamp":int(time.time()*1000)})+'\n')
-            except: pass
+                with open('/tmp/debug.log', 'a') as f:
+                    f.write(json.dumps(debug_data)+'\n')
+            except Exception as e:
+                logger.warning(f"[DEBUG] Failed to write log file: {e}")
             # #endregion
             resp = await client.post(
                 f"{WORKER_URL}/v1/chat/completions",
                 json=req.dict(),
             )
             # #region agent log
+            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:80","message":"Worker response received","data":{"status_code":resp.status_code},"timestamp":int(time.time()*1000)}
+            logger.info(f"[DEBUG] {json.dumps(debug_data)}")
             try:
-                with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:80","message":"Worker response received","data":{"status_code":resp.status_code},"timestamp":int(time.time()*1000)})+'\n')
-            except: pass
+                with open('/tmp/debug.log', 'a') as f:
+                    f.write(json.dumps(debug_data)+'\n')
+            except Exception as e:
+                logger.warning(f"[DEBUG] Failed to write log file: {e}")
             # #endregion
             resp.raise_for_status()
             data = resp.json()
             # #region agent log
+            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:84","message":"Worker response parsed","data":{"has_choices":"choices" in data if isinstance(data,dict) else False},"timestamp":int(time.time()*1000)}
+            logger.info(f"[DEBUG] {json.dumps(debug_data)}")
             try:
-                with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:84","message":"Worker response parsed","data":{"has_choices":"choices" in data if isinstance(data,dict) else False},"timestamp":int(time.time()*1000)})+'\n')
-            except: pass
+                with open('/tmp/debug.log', 'a') as f:
+                    f.write(json.dumps(debug_data)+'\n')
+            except Exception as e:
+                logger.warning(f"[DEBUG] Failed to write log file: {e}")
             # #endregion
 
     except httpx.HTTPStatusError as e:
         # #region agent log
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:87","message":"Worker HTTP error","data":{"status_code":e.response.status_code,"response_text":e.response.text[:200] if hasattr(e.response,'text') else None},"timestamp":int(time.time()*1000)}
+        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
         try:
-            with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:87","message":"Worker HTTP error","data":{"status_code":e.response.status_code,"response_text":e.response.text[:200] if hasattr(e.response,'text') else None},"timestamp":int(time.time()*1000)})+'\n')
-        except: pass
+            with open('/tmp/debug.log', 'a') as f:
+                f.write(json.dumps(debug_data)+'\n')
+        except Exception as e2:
+            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
         # #endregion
         logger.error(f"[{request_id}] worker error {e.response.status_code}")
         raise HTTPException(status_code=502, detail="Worker HTTP error")
 
     except Exception as e:
         # #region agent log
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:92","message":"Worker exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e)},"timestamp":int(time.time()*1000)}
+        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
         try:
-            with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:92","message":"Worker exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e)},"timestamp":int(time.time()*1000)})+'\n')
-        except: pass
+            with open('/tmp/debug.log', 'a') as f:
+                f.write(json.dumps(debug_data)+'\n')
+        except Exception as e2:
+            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
         # #endregion
         logger.exception(f"[{request_id}] worker failed")
         raise HTTPException(status_code=502, detail=str(e))
@@ -127,10 +149,13 @@ async def route_generate(req: ChatCompletionRequest):
     latency = time.time() - start
     ROUTER_LATENCY.observe(latency)
     # #region agent log
+    debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:99","message":"Router returning data","data":{"latency":latency,"data_type":type(data).__name__},"timestamp":int(time.time()*1000)}
+    logger.info(f"[DEBUG] {json.dumps(debug_data)}")
     try:
-        with open('/home/ubuntu/k8s/llm-deployment/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:99","message":"Router returning data","data":{"latency":latency,"data_type":type(data).__name__},"timestamp":int(time.time()*1000)})+'\n')
-    except: pass
+        with open('/tmp/debug.log', 'a') as f:
+            f.write(json.dumps(debug_data)+'\n')
+    except Exception as e:
+        logger.warning(f"[DEBUG] Failed to write log file: {e}")
     # #endregion
     logger.info(f"[{request_id}] done in {latency:.3f}s")
     return data
