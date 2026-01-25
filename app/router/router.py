@@ -2,9 +2,10 @@
 
 import os
 import time
-import httpx
 import logging
-from typing import Optional, List
+import httpx
+from typing import List, Optional, Literal
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -26,7 +27,7 @@ logger.setLevel(getattr(logging, log_level, logging.INFO))
 # =====================
 # FastAPI App
 # =====================
-app = FastAPI(title="LLM Router (vLLM only)")
+app = FastAPI(title="LLM Router (chat passthrough)")
 
 # =====================
 # Prometheus Metrics
@@ -38,21 +39,19 @@ ROUTER_LATENCY = Histogram("router_latency_seconds", "Router latency")
 # Worker Configuration
 # =====================
 class WorkerConfig:
-    def __init__(self, url: str, api_endpoint: str):
+    def __init__(self, url: str):
         self.url = url
-        self.api_endpoint = api_endpoint
-        logger.info(f"Registered worker: url={url}, endpoint={api_endpoint}")
+        logger.info(f"Registered worker: {url}")
 
-def build_workers_list() -> List[WorkerConfig]:
-    logger.info("Building worker list (vLLM only)")
+def build_workers() -> List[WorkerConfig]:
+    # vLLM OpenAI-compatible API
     return [
         WorkerConfig(
-            url="http://vllm-worker-service.llm.svc.cluster.local:8002",
-            api_endpoint="/v1/chat/completions",
+            url="http://vllm-worker-service.llm.svc.cluster.local:8002"
         )
     ]
 
-WORKERS = build_workers_list()
+WORKERS = build_workers()
 
 # =====================
 # Startup
@@ -60,14 +59,14 @@ WORKERS = build_workers_list()
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 60)
-    logger.info("Router starting up")
-    logger.info(f"Total workers: {len(WORKERS)}")
+    logger.info("Router starting (chat passthrough mode)")
+    logger.info(f"Workers: {len(WORKERS)}")
     for i, w in enumerate(WORKERS):
-        logger.info(f"  Worker {i+1}: {w.url}{w.api_endpoint}")
+        logger.info(f"  Worker {i+1}: {w.url}")
     logger.info("=" * 60)
 
 # =====================
-# Round-robin worker picker
+# Round-robin picker
 # =====================
 _rr_index = 0
 
@@ -75,17 +74,22 @@ def pick_worker() -> WorkerConfig:
     global _rr_index
     if not WORKERS:
         raise HTTPException(status_code=503, detail="No workers available")
-    worker = WORKERS[_rr_index % len(WORKERS)]
+    w = WORKERS[_rr_index % len(WORKERS)]
     _rr_index += 1
-    return worker
+    return w
 
 # =====================
-# Request / Response Models
+# OpenAI Chat Schemas (minimal)
 # =====================
-class GenerateRequest(BaseModel):
-    prompt: str
-    max_new_tokens: int = 64
-    temperature: float = 0.7
+class ChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: List[ChatMessage]
+    max_tokens: Optional[int] = 128
+    temperature: Optional[float] = 0.7
 
 # =====================
 # Health & Metrics
@@ -94,9 +98,7 @@ class GenerateRequest(BaseModel):
 async def health():
     return {
         "status": "ok",
-        "workers": [
-            {"url": w.url, "endpoint": w.api_endpoint} for w in WORKERS
-        ],
+        "workers": [w.url for w in WORKERS],
     }
 
 @app.get("/metrics")
@@ -107,61 +109,54 @@ def metrics():
 # Core API
 # =====================
 @app.post("/route_generate")
-async def route_generate(req: GenerateRequest):
-    request_id = f"req_{int(time.time() * 1000)}"
+async def route_generate(req: ChatCompletionRequest):
+    """
+    🔥 关键语义：
+    - Gateway 传什么，这里就转什么
+    - Router 不碰 prompt，不改 messages
+    """
+    request_id = f"rt_{int(time.time() * 1000)}"
     start = time.time()
+    ROUTER_REQUESTS.inc()
 
     logger.info(
-        f"[{request_id}] route_generate: prompt_len={len(req.prompt)}, "
-        f"max_tokens={req.max_new_tokens}, temp={req.temperature}"
+        f"[{request_id}] model={req.model}, messages={len(req.messages)}"
     )
-
-    ROUTER_REQUESTS.inc()
 
     worker = pick_worker()
     logger.info(f"[{request_id}] Using worker {worker.url}")
 
-    # Convert prompt to messages format for /v1/chat/completions
-    # Gateway sends a concatenated prompt, we'll treat it as a single user message
-    payload = {
-        "model": "qwen2.5-0.5b",
-        "messages": [
-            {"role": "user", "content": req.prompt}
-        ],
-        "max_tokens": req.max_new_tokens,
-        "temperature": req.temperature,
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                f"{worker.url}{worker.api_endpoint}",
-                json=payload,
+                f"{worker.url}/v1/chat/completions",
+                json=req.dict(),
             )
             resp.raise_for_status()
             data = resp.json()
+
     except httpx.TimeoutException:
         logger.error(f"[{request_id}] Worker timeout")
         raise HTTPException(status_code=504, detail="Worker timeout")
+
     except httpx.HTTPStatusError as e:
         logger.error(
-            f"[{request_id}] Worker HTTP error: {e.response.status_code} {e.response.text[:200]}"
+            f"[{request_id}] Worker HTTP error {e.response.status_code}: "
+            f"{e.response.text[:200]}"
         )
         raise HTTPException(status_code=503, detail="Worker HTTP error")
+
     except Exception as e:
-        logger.exception(f"[{request_id}] Worker failed")
+        logger.exception(f"[{request_id}] Worker error")
         raise HTTPException(status_code=503, detail=str(e))
 
-    # Parse vLLM /v1/chat/completions response
-    # Response format: {"choices": [{"message": {"role": "assistant", "content": "..."}}]}
+    # ✅ 抽取 assistant 内容，统一给 Gateway
     output = ""
-    if "choices" in data and data["choices"]:
-        choice = data["choices"][0]
-        if "message" in choice:
-            output = choice["message"].get("content", "")
-        elif "text" in choice:
-            # Fallback for old format
-            output = choice.get("text", "")
+    try:
+        output = data["choices"][0]["message"]["content"]
+    except Exception:
+        logger.error(f"[{request_id}] Invalid vLLM response format")
+        raise HTTPException(status_code=502, detail="Invalid worker response")
 
     latency = time.time() - start
     ROUTER_LATENCY.observe(latency)
@@ -171,4 +166,3 @@ async def route_generate(req: GenerateRequest):
     )
 
     return {"output": output}
-
