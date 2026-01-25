@@ -1,11 +1,12 @@
 # kube-prometheus-stack Helm Values
-# 适配当前配置：子路径、Ingress、资源限制
+# Demo 场景：子路径 + Ingress + IP 可变
 
-# ---------- Grafana ----------
+# =======================
+# Grafana
+# =======================
 grafana:
   enabled: true
 
-  # 资源限制（匹配当前配置）
   resources:
     requests:
       cpu: "100m"
@@ -13,8 +14,7 @@ grafana:
     limits:
       cpu: "500m"
       memory: "1Gi"
-  
-  # Node Affinity（优先 system node，否则调度到 control-plane）
+
   affinity:
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
@@ -26,24 +26,19 @@ grafana:
                 values:
                   - "true"
 
-  # Tolerations（允许调度到 control-plane node）
   tolerations:
     - key: "node-role.kubernetes.io/control-plane"
       operator: "Exists"
       effect: "NoSchedule"
 
-  # 管理员凭证（匹配当前配置）
   adminUser: admin
   adminPassword: admin
 
-  # Ingress 配置（子路径支持）
   ingress:
     enabled: true
     ingressClassName: nginx
     path: /grafana
     pathType: Prefix
-    # hosts:  # 注释掉，允许通过 IP 直接访问
-    #   - monitoring.local
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
       nginx.ingress.kubernetes.io/proxy-body-size: "50m"
@@ -51,7 +46,6 @@ grafana:
       nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
       nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
 
-  # Grafana 配置（子路径支持）
   grafana.ini:
     server:
       root_url: "%(protocol)s://%(domain)s/grafana/"
@@ -59,25 +53,38 @@ grafana:
     auth:
       anonymous:
         enabled: true
-        org_role: Admin  # 改为 Admin，匿名用户有完整权限
+        org_role: Admin
       basic:
         enabled: false
-  
-  # Persistence（匹配当前配置）
+
   persistence:
     enabled: true
     type: pvc
-    storageClassName: ""
     accessModes:
       - ReadWriteOnce
     size: 10Gi
 
-# ---------- Prometheus ----------
+
+# =======================
+# Prometheus
+# =======================
 prometheus:
   enabled: true
-  
-  # 资源限制（匹配当前配置）
+
   prometheusSpec:
+    # 关键：子路径支持（不要写 IP）
+    routePrefix: /prometheus
+    externalUrl: /prometheus
+
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelectorNilUsesHelmValues: false
+    serviceMonitorSelector:
+      matchLabels:
+        release: prometheus
+    serviceMonitorNamespaceSelector:
+      matchLabels:
+        release: prometheus
+
     resources:
       requests:
         cpu: "500m"
@@ -85,8 +92,7 @@ prometheus:
       limits:
         cpu: "2"
         memory: "4Gi"
-    
-    # Node Affinity（优先 system node，否则调度到 control-plane）
+
     affinity:
       nodeAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
@@ -97,16 +103,13 @@ prometheus:
                   operator: In
                   values:
                     - "true"
-    
-    # Tolerations（允许调度到 control-plane node）
+
     tolerations:
       - key: "node-role.kubernetes.io/control-plane"
         operator: "Exists"
         effect: "NoSchedule"
-    
-    # 自定义 scrape configs（保留当前的配置）
+
     additionalScrapeConfigs:
-      # dcgm-exporter（通过 ServiceMonitor 自动发现，但也可以手动配置）
       - job_name: "dcgm-exporter"
         kubernetes_sd_configs:
           - role: endpoints
@@ -120,8 +123,7 @@ prometheus:
           - source_labels: [__meta_kubernetes_endpoint_port_name]
             action: keep
             regex: http
-      
-      # LLM System Monitoring
+
       - job_name: "kubernetes-pods-llm"
         kubernetes_sd_configs:
           - role: pod
@@ -143,22 +145,7 @@ prometheus:
             regex: (.+)
           - action: labelmap
             regex: __meta_kubernetes_pod_label_(.+)
-          - source_labels: [__meta_kubernetes_namespace]
-            action: replace
-            target_label: kubernetes_namespace
-          - source_labels: [__meta_kubernetes_pod_name]
-            action: replace
-            target_label: kubernetes_pod_name
-          - source_labels: [__meta_kubernetes_pod_container_name]
-            action: replace
-            target_label: kubernetes_container_name
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            action: replace
-            target_label: job
-            regex: (.+)
-            replacement: ${1}
-    
-    # Persistence（匹配当前配置）
+
     retention: 30d
     storageSpec:
       volumeClaimTemplate:
@@ -167,22 +154,23 @@ prometheus:
           resources:
             requests:
               storage: 50Gi
-  
-  # Prometheus Ingress
+
   ingress:
     enabled: true
     ingressClassName: nginx
-    paths: 
+    paths:
       - /prometheus
     pathType: Prefix
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
-# ---------- Alertmanager ----------
+
+# =======================
+# Alertmanager
+# =======================
 alertmanager:
   enabled: true
   alertmanagerSpec:
-    # Node Affinity（优先 system node，否则调度到 control-plane）
     affinity:
       nodeAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
@@ -193,17 +181,21 @@ alertmanager:
                   operator: In
                   values:
                     - "true"
-    
-    # Tolerations（允许调度到 control-plane node）
     tolerations:
       - key: "node-role.kubernetes.io/control-plane"
         operator: "Exists"
         effect: "NoSchedule"
 
-# ---------- Node Exporter（由 Helm 管理）----------
+
+# =======================
+# Node Exporter
+# =======================
 nodeExporter:
   enabled: true
 
-# ---------- Kube State Metrics（由 Helm 管理）----------
+
+# =======================
+# Kube State Metrics
+# =======================
 kubeStateMetrics:
   enabled: true
