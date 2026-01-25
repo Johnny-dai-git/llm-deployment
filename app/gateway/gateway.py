@@ -4,11 +4,13 @@ import os
 import time
 import logging
 import httpx
+from typing import List, Optional, Literal
+
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
+
 
 # =====================
 # Logging
@@ -22,6 +24,7 @@ logger = logging.getLogger("gateway")
 
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logger.setLevel(getattr(logging, log_level, logging.INFO))
+
 
 # =====================
 # Router config
@@ -40,7 +43,12 @@ logger.info(f"Using ROUTER_URL: {ROUTER_URL}")
 
 EXPECTED_API_KEY = os.environ.get("API_KEY")  # optional
 
+
+# =====================
+# FastAPI app
+# =====================
 app = FastAPI(title="LLM API Gateway")
+
 
 # =====================
 # Prometheus metrics
@@ -51,6 +59,7 @@ GATEWAY_REQUESTS = Counter(
 GATEWAY_LATENCY = Histogram(
     "gateway_request_latency_seconds", "API request latency", ["endpoint"]
 )
+
 
 # =====================
 # OpenAI-style schemas
@@ -80,6 +89,7 @@ class ChatCompletionResponse(BaseModel):
     model: str
     choices: List[ChatCompletionChoice]
 
+
 # =====================
 # Helpers
 # =====================
@@ -87,7 +97,10 @@ def check_api_key(authorization: Optional[str]):
     if EXPECTED_API_KEY is None:
         return
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization header",
+        )
     token = authorization.split(" ", 1)[1].strip()
     if token != EXPECTED_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API key")
@@ -95,12 +108,12 @@ def check_api_key(authorization: Optional[str]):
 
 def build_prompt_from_messages(messages: List[ChatMessage]) -> str:
     """
-    ✅ 关键修改点：
-    - 不使用 [USER] / [ASSISTANT] / [SYSTEM]
-    - 直接把所有 message.content 拼成一个 prompt
-    - 行为与 vLLM /v1/completions 完全一致
+    ✅ 与 OpenAI / vLLM 完全一致的行为：
+    - 不插入 [USER] / [ASSISTANT] / [SYSTEM]
+    - 直接按顺序拼接 content
     """
     return "\n".join(m.content for m in messages)
+
 
 # =====================
 # Health & metrics
@@ -114,8 +127,31 @@ def health():
 def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+
 # =====================
-# Core API
+# OpenAI compatibility: /v1/models
+# =====================
+@app.get("/v1/models")
+def list_models():
+    """
+    ✅ WebUI / OpenAI SDK / LangChain 都会调用
+    - 页面加载时调用一次
+    - 不应该 404
+    """
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": "qwen2.5-0.5b",
+                "object": "model",
+                "owned_by": "local",
+            }
+        ],
+    }
+
+
+# =====================
+# Core API: /v1/chat/completions
 # =====================
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(
@@ -126,19 +162,20 @@ async def chat_completions(
     endpoint = "/v1/chat/completions"
 
     logger.info(
-        f"[{request_id}] request: model={req.model}, "
+        f"[{request_id}] model={req.model}, "
         f"messages={len(req.messages)}, max_tokens={req.max_tokens}"
     )
 
     GATEWAY_REQUESTS.labels(endpoint=endpoint).inc()
     start = time.time()
 
+    # 1. API key check (optional)
     check_api_key(authorization)
 
-    # 1. Build prompt
+    # 2. Build prompt
     prompt = build_prompt_from_messages(req.messages)
 
-    # 2. Call router
+    # 3. Call router
     payload = {
         "prompt": prompt,
         "max_new_tokens": req.max_tokens,
@@ -147,17 +184,27 @@ async def chat_completions(
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(f"{ROUTER_URL}/route_generate", json=payload)
+            resp = await client.post(
+                f"{ROUTER_URL}/route_generate", json=payload
+            )
             resp.raise_for_status()
             data = resp.json()
+
     except httpx.TimeoutException:
+        logger.error(f"[{request_id}] router timeout")
         raise HTTPException(status_code=504, detail="Router timeout")
+
     except httpx.HTTPStatusError as e:
+        logger.error(
+            f"[{request_id}] router HTTP error {e.response.status_code}"
+        )
         raise HTTPException(
             status_code=502,
             detail=f"Router HTTP error: {e.response.status_code}",
         )
+
     except Exception as e:
+        logger.exception(f"[{request_id}] router error")
         raise HTTPException(status_code=502, detail=f"Router error: {str(e)}")
 
     latency = time.time() - start
@@ -166,9 +213,10 @@ async def chat_completions(
     output_text = data.get("output", "")
 
     logger.info(
-        f"[{request_id}] completed in {latency:.3f}s, output_len={len(output_text)}"
+        f"[{request_id}] done in {latency:.3f}s, output_len={len(output_text)}"
     )
 
+    # 4. OpenAI-style response
     return ChatCompletionResponse(
         id=f"chatcmpl-{int(time.time() * 1000)}",
         created=int(time.time()),
@@ -176,7 +224,10 @@ async def chat_completions(
         choices=[
             ChatCompletionChoice(
                 index=0,
-                message=ChatMessage(role="assistant", content=output_text),
+                message=ChatMessage(
+                    role="assistant",
+                    content=output_text,
+                ),
                 finish_reason="stop",
             )
         ],
