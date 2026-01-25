@@ -172,7 +172,8 @@ prometheus:
   ingress:
     enabled: true
     ingressClassName: nginx
-    path: /prometheus
+    paths: 
+      - /prometheus
     pathType: Prefix
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
