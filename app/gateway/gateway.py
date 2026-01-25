@@ -102,14 +102,6 @@ def check_api_key(authorization: Optional[str]):
         raise HTTPException(status_code=403, detail="Invalid API key")
 
 
-def build_prompt(messages: List[ChatMessage]) -> str:
-    """
-    OpenAI Chat → plain prompt
-    system / user / assistant 全部按顺序拼接
-    """
-    return "\n".join(m.content for m in messages)
-
-
 # =====================
 # Health & metrics
 # =====================
@@ -160,13 +152,11 @@ async def chat_completions(
 
     check_api_key(authorization)
 
-    # 1. Build prompt
-    prompt = build_prompt(req.messages)
-
-    # 2. Call router with router-native format
+    # 2. Call router with OpenAI-compatible format
     payload = {
-        "prompt": prompt,
-        "max_new_tokens": req.max_tokens,
+        "model": req.model,
+        "messages": [msg.dict() for msg in req.messages],
+        "max_tokens": req.max_tokens,
         "temperature": req.temperature,
     }
 
