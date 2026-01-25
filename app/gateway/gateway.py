@@ -216,9 +216,22 @@ async def chat_completions(
                 logger.warning(f"[DEBUG] Failed to write log file: {e}")
             # #endregion
 
+    except httpx.ConnectError as e:
+        # #region agent log
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:219","message":"Router connection error","data":{"exception_type":type(e).__name__,"exception_msg":str(e),"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
+        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
+        try:
+            with open('/tmp/debug.log', 'a') as f:
+                f.write(json.dumps(debug_data)+'\n')
+        except Exception as e2:
+            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
+        # #endregion
+        logger.error(f"[{request_id}] router connection error: {e}")
+        raise HTTPException(status_code=502, detail=f"Router connection error: {str(e)}")
+
     except httpx.TimeoutException:
         # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"gateway.py:178","message":"Router timeout","data":{},"timestamp":int(time.time()*1000)}
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"gateway.py:231","message":"Router timeout","data":{"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
         logger.error(f"[DEBUG] {json.dumps(debug_data)}")
         try:
             with open('/tmp/debug.log', 'a') as f:
@@ -230,7 +243,13 @@ async def chat_completions(
 
     except httpx.HTTPStatusError as e:
         # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"gateway.py:183","message":"Router HTTP error","data":{"status_code":e.response.status_code,"response_text":e.response.text[:200] if hasattr(e.response,'text') else None},"timestamp":int(time.time()*1000)}
+        response_text = ""
+        try:
+            if hasattr(e.response, 'text'):
+                response_text = e.response.text[:500]
+        except:
+            pass
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"gateway.py:245","message":"Router HTTP error","data":{"status_code":e.response.status_code,"response_text":response_text,"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
         logger.error(f"[DEBUG] {json.dumps(debug_data)}")
         try:
             with open('/tmp/debug.log', 'a') as f:
@@ -238,15 +257,15 @@ async def chat_completions(
         except Exception as e2:
             logger.warning(f"[DEBUG] Failed to write log file: {e2}")
         # #endregion
-        logger.error(f"[{request_id}] router HTTP error {e.response.status_code}")
+        logger.error(f"[{request_id}] router HTTP error {e.response.status_code}: {response_text[:100]}")
         raise HTTPException(
             status_code=502,
-            detail=f"Router HTTP error: {e.response.status_code}",
+            detail=f"Router HTTP error {e.response.status_code}: {response_text[:200] if response_text else 'No details'}",
         )
 
     except Exception as e:
         # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:191","message":"Router exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e)},"timestamp":int(time.time()*1000)}
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:263","message":"Router exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e),"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
         logger.error(f"[DEBUG] {json.dumps(debug_data)}")
         try:
             with open('/tmp/debug.log', 'a') as f:
@@ -254,8 +273,8 @@ async def chat_completions(
         except Exception as e2:
             logger.warning(f"[DEBUG] Failed to write log file: {e2}")
         # #endregion
-        logger.exception(f"[{request_id}] router error")
-        raise HTTPException(status_code=502, detail=str(e))
+        logger.exception(f"[{request_id}] router error: {e}")
+        raise HTTPException(status_code=502, detail=f"Router error: {str(e)}")
 
     latency = time.time() - start
     GATEWAY_LATENCY.labels(endpoint=endpoint).observe(latency)

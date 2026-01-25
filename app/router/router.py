@@ -87,7 +87,8 @@ async def route_generate(req: ChatCompletionRequest):
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # #region agent log
-            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:74","message":"Calling worker","data":{"url":f"{WORKER_URL}/v1/chat/completions"},"timestamp":int(time.time()*1000)}
+            req_dict = req.dict()
+            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:74","message":"Calling worker","data":{"url":f"{WORKER_URL}/v1/chat/completions","payload":req_dict},"timestamp":int(time.time()*1000)}
             logger.info(f"[DEBUG] {json.dumps(debug_data)}")
             try:
                 with open('/tmp/debug.log', 'a') as f:
@@ -97,7 +98,7 @@ async def route_generate(req: ChatCompletionRequest):
             # #endregion
             resp = await client.post(
                 f"{WORKER_URL}/v1/chat/completions",
-                json=req.dict(),
+                json=req_dict,
             )
             # #region agent log
             debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:80","message":"Worker response received","data":{"status_code":resp.status_code},"timestamp":int(time.time()*1000)}
@@ -120,9 +121,9 @@ async def route_generate(req: ChatCompletionRequest):
                 logger.warning(f"[DEBUG] Failed to write log file: {e}")
             # #endregion
 
-    except httpx.HTTPStatusError as e:
+    except httpx.ConnectError as e:
         # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:87","message":"Worker HTTP error","data":{"status_code":e.response.status_code,"response_text":e.response.text[:200] if hasattr(e.response,'text') else None},"timestamp":int(time.time()*1000)}
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:123","message":"Worker connection error","data":{"exception_type":type(e).__name__,"exception_msg":str(e),"worker_url":WORKER_URL},"timestamp":int(time.time()*1000)}
         logger.error(f"[DEBUG] {json.dumps(debug_data)}")
         try:
             with open('/tmp/debug.log', 'a') as f:
@@ -130,12 +131,44 @@ async def route_generate(req: ChatCompletionRequest):
         except Exception as e2:
             logger.warning(f"[DEBUG] Failed to write log file: {e2}")
         # #endregion
-        logger.error(f"[{request_id}] worker error {e.response.status_code}")
-        raise HTTPException(status_code=502, detail="Worker HTTP error")
+        logger.error(f"[{request_id}] worker connection error: {e}")
+        raise HTTPException(status_code=502, detail=f"Worker connection error: {str(e)}")
+
+    except httpx.TimeoutException as e:
+        # #region agent log
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"router.py:135","message":"Worker timeout","data":{"exception_type":type(e).__name__,"exception_msg":str(e),"worker_url":WORKER_URL},"timestamp":int(time.time()*1000)}
+        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
+        try:
+            with open('/tmp/debug.log', 'a') as f:
+                f.write(json.dumps(debug_data)+'\n')
+        except Exception as e2:
+            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
+        # #endregion
+        logger.error(f"[{request_id}] worker timeout")
+        raise HTTPException(status_code=504, detail="Worker timeout")
+
+    except httpx.HTTPStatusError as e:
+        # #region agent log
+        response_text = ""
+        try:
+            if hasattr(e.response, 'text'):
+                response_text = e.response.text[:500]
+        except:
+            pass
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"router.py:149","message":"Worker HTTP error","data":{"status_code":e.response.status_code,"response_text":response_text,"worker_url":WORKER_URL},"timestamp":int(time.time()*1000)}
+        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
+        try:
+            with open('/tmp/debug.log', 'a') as f:
+                f.write(json.dumps(debug_data)+'\n')
+        except Exception as e2:
+            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
+        # #endregion
+        logger.error(f"[{request_id}] worker error {e.response.status_code}: {response_text}")
+        raise HTTPException(status_code=502, detail=f"Worker HTTP error {e.response.status_code}: {response_text[:100]}")
 
     except Exception as e:
         # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:92","message":"Worker exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e)},"timestamp":int(time.time()*1000)}
+        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"router.py:163","message":"Worker exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e),"worker_url":WORKER_URL},"timestamp":int(time.time()*1000)}
         logger.error(f"[DEBUG] {json.dumps(debug_data)}")
         try:
             with open('/tmp/debug.log', 'a') as f:
@@ -143,8 +176,8 @@ async def route_generate(req: ChatCompletionRequest):
         except Exception as e2:
             logger.warning(f"[DEBUG] Failed to write log file: {e2}")
         # #endregion
-        logger.exception(f"[{request_id}] worker failed")
-        raise HTTPException(status_code=502, detail=str(e))
+        logger.exception(f"[{request_id}] worker failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Worker error: {str(e)}")
 
     latency = time.time() - start
     ROUTER_LATENCY.observe(latency)
