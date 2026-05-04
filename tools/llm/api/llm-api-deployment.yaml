@@ -27,11 +27,8 @@ spec:
     metadata:
       labels:
         app: llm-api
-      annotations:
-        # Prometheus scraping annotations
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8000"
-        prometheus.io/path: "/metrics"
+      # Prometheus 抓取由 api-servicemonitor.yaml(ServiceMonitor)负责,
+      # 不再使用 prometheus.io/* annotation(kube-prometheus-stack 不读这个)
     spec:
       terminationGracePeriodSeconds: 60
       securityContext:

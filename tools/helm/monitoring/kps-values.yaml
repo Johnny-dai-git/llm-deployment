@@ -75,14 +75,24 @@ prometheus:
     routePrefix: /prometheus
     externalUrl: /prometheus
 
+    # Selector 全部放开:这是单团队/小项目的标准做法。
+    # 任意 namespace 下的 ServiceMonitor / PodMonitor / PrometheusRule
+    # 都会被 Prometheus 选中,不再要求带特定 label。
+    # 如果以后多团队隔离,再收紧成 matchLabels: {team: foo} 之类。
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorNamespaceSelectorNilUsesHelmValues: false
-    serviceMonitorSelector:
-      matchLabels:
-        release: prometheus
-    serviceMonitorNamespaceSelector:
-      matchLabels:
-        release: prometheus
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorNamespaceSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+
+    ruleSelectorNilUsesHelmValues: false
+    ruleNamespaceSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
 
     resources:
       requests:

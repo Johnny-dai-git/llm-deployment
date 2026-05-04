@@ -27,10 +27,8 @@ spec:
     metadata:
       labels:
         app: vllm-worker
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8002"
-        prometheus.io/path: "/metrics"
+      # Prometheus 抓取由 vllm-servicemonitor.yaml(ServiceMonitor)负责,
+      # 不再使用 prometheus.io/* annotation(kube-prometheus-stack 不读这个)
 
     spec:
       runtimeClassName: nvidia

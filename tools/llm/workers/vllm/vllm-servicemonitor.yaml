@@ -1,0 +1,26 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vllm-worker
+  namespace: llm
+  labels:
+    app: vllm-worker
+spec:
+  # Service 选择器:匹配 vllm-worker-service(metadata.labels.app: vllm-worker)
+  selector:
+    matchLabels:
+      app: vllm-worker
+  namespaceSelector:
+    matchNames:
+      - llm
+  endpoints:
+    - port: http              # 引用 Service 的 named port (8002)
+      path: /metrics          # vLLM 内置的 OpenAI server 暴露丰富指标:
+                              #   vllm:e2e_request_latency_seconds
+                              #   vllm:time_to_first_token_seconds
+                              #   vllm:gpu_cache_usage_perc
+                              #   vllm:num_requests_running / waiting
+                              #   vllm:request_prompt_tokens / generation_tokens
+      interval: 15s
+      scrapeTimeout: 10s
+      honorLabels: false

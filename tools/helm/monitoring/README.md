@@ -94,7 +94,14 @@ kubectl delete ingress grafana-ingress -n monitoring --ignore-not-found
 - Persistence: 50Gi PVC
 - Retention: 30d
 - Node Selector: `system: "true"`
-- 自定义 scrape configs: 包含 dcgm-exporter 和 LLM pods
+- ServiceMonitor / PodMonitor / PrometheusRule selector 全部放开（任意
+  namespace、任意 label 都会被发现）。业务指标采集靠下面这些资源:
+    - `tools/llm/api/api-servicemonitor.yaml`     —— llm-api `/metrics`
+    - `tools/llm/workers/vllm/vllm-servicemonitor.yaml` —— vLLM 内置指标
+    - DCGM exporter 自带的 ServiceMonitor (Helm chart `serviceMonitor.enabled: true`)
+- ⚠️ 注意:Pod 模板里的 `prometheus.io/*` annotation **对 kube-prometheus-stack
+  不生效**。这些 annotation 是给"经典 Prometheus + 静态 scrape config"用的,
+  本项目用的是 prometheus-operator 模式,只认 `ServiceMonitor` / `PodMonitor` CRD。
 
 ### DCGM Exporter
 - Runtime Class: `nvidia`

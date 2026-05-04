@@ -26,11 +26,9 @@ spec:
     metadata:
       labels:
         app: llm-web
-      annotations:
-        # Prometheus scraping annotations
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/metrics"
+      # llm-web 是静态 nginx,不暴露 Prometheus 指标。
+      # 如果未来要采集 nginx 指标,需要加 nginx-prometheus-exporter sidecar
+      # 然后给它写一个 ServiceMonitor。当前不需要。
     spec:
       terminationGracePeriodSeconds: 30
       securityContext:

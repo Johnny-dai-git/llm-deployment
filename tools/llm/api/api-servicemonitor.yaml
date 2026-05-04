@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: llm-api
+  namespace: llm
+  labels:
+    app: llm-api
+spec:
+  # Service 选择器:匹配 api-gateway-service(metadata.labels.app: llm-api)
+  selector:
+    matchLabels:
+      app: llm-api
+  # 同 namespace 内查找
+  namespaceSelector:
+    matchNames:
+      - llm
+  endpoints:
+    - port: http              # 引用 Service 的 named port
+      path: /metrics          # gateway.py 暴露的指标路径
+      interval: 15s           # 抓取频率
+      scrapeTimeout: 10s      # 单次抓取超时
+      honorLabels: false
