@@ -7,7 +7,8 @@ set -e
 REGISTRY="ghcr.io"
 IMAGE_PREFIX="johnny-dai-git/llm-deployment"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# build-and-push.sh 现在在 script/laptop/ 下,repo 根需要再上一层
+REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # 颜色输出
 RED='\033[0;31m'

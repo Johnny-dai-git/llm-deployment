@@ -20,7 +20,8 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# launch.sh 现在在 script/laptop/ 下,repo 根需要再上一层
+REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 INSTALL_DIR="${SCRIPT_DIR}"
 CONTROL_DIR="${REPO_DIR}/tools"
 
