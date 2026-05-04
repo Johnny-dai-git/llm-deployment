@@ -13,11 +13,10 @@ metadata:
     argocd-image-updater.argoproj.io/git-branch: main
 
 spec:
-  # 2 副本:跑在同一块 GPU 上(time-slicing 切 2 份),
-  # 提供 Pod 级冗余 + 滚动升级零中断;
-  # 不会增加吞吐(单卡共享),只换"高可用"
-  # 上 Lambda 多 GPU 时这个数字直接生效,跨节点真正负载均衡
-  replicas: 2
+  # 初始 1 副本,实际由 HPA(vllm-hpa.yaml)按队列深度动态调整 1↔2
+  # HPA 一旦运行后会接管这个字段,不要手动改 replicas
+  # 上限 2 来自 GPU time-slicing 切 2 份;Lambda 多 GPU 时改 HPA maxReplicas
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:

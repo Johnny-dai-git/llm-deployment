@@ -8,6 +8,7 @@ resources:
   - api/llm-api-deployment.yaml
   - api/api-gateway-service.yaml
   - api/api-servicemonitor.yaml
+  - api/api-hpa.yaml
 
   # Web frontend
   - web/llm-web-deployment.yaml
@@ -18,6 +19,7 @@ resources:
   - workers/vllm/vllm-worker-deployment.yaml
   - workers/vllm/vllm-worker-service.yaml
   - workers/vllm/vllm-servicemonitor.yaml
+  - workers/vllm/vllm-hpa.yaml
 
   # Ingress
   - ingress/unified-ingress.yaml

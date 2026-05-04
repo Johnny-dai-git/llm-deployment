@@ -1,0 +1,56 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: llm-api
+  namespace: llm
+  labels:
+    app: llm-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-api
+  minReplicas: 1
+  maxReplicas: 3                # llm-api 是无状态薄代理,可任意横向扩
+  metrics:
+    # ============ 主指标:CPU 利用率 ============
+    # 60%:留 40% 给突发流量,在还没烧到限制时先扩容
+    # CPU 是 llm-api 的真实瓶颈(JSON 序列化 + httpx 转发)
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    # ============ 辅助指标:内存利用率 ============
+    # 75%:作为内存泄漏 / 大请求堆积的二级保护
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+  behavior:
+    # ============ 扩容策略 ============
+    # stabilizationWindow:看 15 秒平均,避免瞬时尖峰扩容
+    # 100% / 60s:每分钟最多翻倍(1→2→3),响应快
+    scaleUp:
+      stabilizationWindowSeconds: 15
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Max
+    # ============ 缩容策略 ============
+    # stabilizationWindow: 5 分钟平均才缩容,避免抖动
+    # 50% / 120s:每 2 分钟最多缩一半,温和
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 120
+      selectPolicy: Max

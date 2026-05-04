@@ -1,0 +1,70 @@
+# prometheus-adapter Helm Values
+#
+# 作用:把 Prometheus 里的指标"翻译"成 K8s custom metrics API 能读的格式,
+#       这样 HPA 就能基于 vllm:num_requests_waiting 之类的业务指标做扩缩。
+#
+# 没有这个组件,K8s HPA 只能用 metrics-server 提供的 CPU / 内存这些资源指标。
+
+# Prometheus 数据源
+# 注意 service 名跟 Helm release 名相关:
+#   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
+#   → service 叫 monitoring-kube-prometheus-prometheus
+prometheus:
+  url: http://monitoring-kube-prometheus-prometheus.monitoring.svc
+  port: 9090
+
+# 让 prometheus-adapter Pod 调度到 system 节点
+nodeSelector:
+  system: "true"
+
+# 自定义指标规则
+rules:
+  default: false   # 关掉默认那一堆,只暴露我们要的
+
+  custom:
+    # =========================================================
+    # vLLM 队列深度 → 给 vllm-worker HPA 用
+    # =========================================================
+    # 把 vllm:num_requests_waiting 暴露成 Pod 级 metric:
+    #   GET /apis/custom.metrics.k8s.io/v1beta1/namespaces/llm/pods/*/vllm_num_requests_waiting
+    # HPA 配置时引用 metric 名 vllm_num_requests_waiting
+    - seriesQuery: 'vllm:num_requests_waiting{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: "namespace"
+          pod:
+            resource: "pod"
+      name:
+        matches: "^vllm:(.*)$"
+        as: "vllm_${1}"
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
+
+    # =========================================================
+    # vLLM 正在运行的请求数 → 也暴露,方便 dashboard / 未来扩展
+    # =========================================================
+    - seriesQuery: 'vllm:num_requests_running{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace:
+            resource: "namespace"
+          pod:
+            resource: "pod"
+      name:
+        matches: "^vllm:(.*)$"
+        as: "vllm_${1}"
+      metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
+
+# 暴露 ServiceMonitor 给 Prometheus 抓 prometheus-adapter 自己的指标
+# (元监控:监控你的监控组件)
+serviceMonitor:
+  enabled: true
+
+# 资源请求(适配 prometheus-adapter 自身负载)
+resources:
+  requests:
+    cpu: "50m"
+    memory: "128Mi"
+  limits:
+    cpu: "200m"
+    memory: "256Mi"

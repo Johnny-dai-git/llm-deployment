@@ -124,6 +124,7 @@ helm repo add argo https://argoproj.github.io/argo-helm || true
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx || true
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts || true
 helm repo add nvidia https://nvidia.github.io/dcgm-exporter/helm-charts || true
+helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ || true
 helm repo update
 
 # ================================================================
@@ -233,6 +234,27 @@ if [ "${HAS_GPU}" -eq 1 ]; then
 else
     echo ">>> 无 GPU,跳过 DCGM exporter"
 fi
+
+# ================================================================
+# HPA support: metrics-server + prometheus-adapter
+# ================================================================
+# metrics-server: 提供 K8s 资源指标(CPU/内存),HPA 用 Resource 类型时必需
+# --kubelet-insecure-tls 在自签证书的 kubeadm 集群上需要,生产环境改成正式证书
+echo "===== Installing metrics-server (for CPU/memory HPA) ====="
+helm upgrade --install metrics-server metrics-server/metrics-server \
+  -n kube-system \
+  --set 'args={--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP}' \
+  --reuse-values=false \
+  --wait --timeout 5m
+
+# prometheus-adapter: 把 Prometheus 任意指标变成 K8s custom metrics API
+# 让 HPA 能基于 vllm:num_requests_waiting 这种业务指标扩缩
+echo "===== Installing prometheus-adapter (for custom metrics HPA) ====="
+helm upgrade --install prometheus-adapter prometheus-community/prometheus-adapter \
+  -n monitoring \
+  -f "${CONTROL_DIR}/helm/monitoring/prometheus-adapter-values.yaml" \
+  --reuse-values=false \
+  --wait --timeout 5m
 
 # ================================================================
 # Landing Page
