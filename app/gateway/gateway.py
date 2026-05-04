@@ -226,3 +226,4 @@ async def chat_completions(
 
     # vLLM 已经返回 OpenAI 兼容格式,直接透传(避免再解包/重包)
     return data
+
