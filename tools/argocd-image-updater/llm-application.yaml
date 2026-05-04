@@ -10,16 +10,14 @@ metadata:
     # 集中管理所有服务的镜像更新配置
     # image-list 格式：单行，用逗号分隔（更稳妥，避免 YAML/CRLF 解析问题）
     # 注意：llm-api 是 gateway 与原 router 合并后的统一服务
-    argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway,vllm-worker=ghcr.io/johnny-dai-git/llm-deployment/vllm-worker,trt-worker=ghcr.io/johnny-dai-git/llm-deployment/trt-worker,web=ghcr.io/johnny-dai-git/llm-deployment/web
+    # 当前仅支持 vLLM,TensorRT/BERT 已移除
+    argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway,vllm-worker=ghcr.io/johnny-dai-git/llm-deployment/vllm-worker,web=ghcr.io/johnny-dai-git/llm-deployment/web
     # llm-api (gateway+router merged) 配置
     argocd-image-updater.argoproj.io/llm-api.update-strategy: name
     argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
     # vllm-worker 配置
     argocd-image-updater.argoproj.io/vllm-worker.update-strategy: name
     argocd-image-updater.argoproj.io/vllm-worker.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
-    # trt-worker 配置
-    argocd-image-updater.argoproj.io/trt-worker.update-strategy: name
-    argocd-image-updater.argoproj.io/trt-worker.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
     # web 配置
     argocd-image-updater.argoproj.io/web.update-strategy: name
     argocd-image-updater.argoproj.io/web.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$

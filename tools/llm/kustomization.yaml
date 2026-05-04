@@ -13,11 +13,10 @@ resources:
   - web/llm-web-service.yaml
   - web/llm-web-nginx-configmap.yaml
   
-  # Workers
+  # Workers (vLLM only; TensorRT scaffolding removed)
   - workers/vllm/vllm-worker-deployment.yaml
   - workers/vllm/vllm-worker-service.yaml
-  - workers/trt/trt-worker-deployment.yaml
-  - workers/trt/trt-worker-service.yaml
-  
+
+
   # Ingress
   - ingress/unified-ingress.yaml

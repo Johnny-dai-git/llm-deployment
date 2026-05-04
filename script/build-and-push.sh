@@ -153,7 +153,6 @@ main() {
     # gateway 镜像内含合并后的 llm-api（原 gateway+router 合并）
     build_and_push "gateway" "app/gateway" "app/gateway/Dockerfile" "${VERSION_TAG}"
     build_and_push "vllm-worker" "app/worker/vllm" "app/worker/vllm/Dockerfile" "${VERSION_TAG}"
-    build_and_push "trt-worker" "app/worker/tensorRT" "app/worker/tensorRT/Dockerfile" "${VERSION_TAG}"
     build_and_push "web" "app/web" "app/web/Dockerfile" "${VERSION_TAG}"
     
     echo ""
@@ -164,13 +163,11 @@ main() {
     log_info "Pushed images with version tag ${VERSION_TAG}:"
     echo "  - ${REGISTRY}/${IMAGE_PREFIX}/gateway:${VERSION_TAG}"
     echo "  - ${REGISTRY}/${IMAGE_PREFIX}/vllm-worker:${VERSION_TAG}"
-    echo "  - ${REGISTRY}/${IMAGE_PREFIX}/trt-worker:${VERSION_TAG}"
     echo "  - ${REGISTRY}/${IMAGE_PREFIX}/web:${VERSION_TAG}"
     echo ""
     log_info "Also pushed latest tags (for reference):"
     echo "  - ${REGISTRY}/${IMAGE_PREFIX}/gateway:latest"
     echo "  - ${REGISTRY}/${IMAGE_PREFIX}/vllm-worker:latest"
-    echo "  - ${REGISTRY}/${IMAGE_PREFIX}/trt-worker:latest"
     echo "  - ${REGISTRY}/${IMAGE_PREFIX}/web:latest"
     echo ""
     log_warn "Note: ArgoCD Image Updater will automatically detect the new version tag"

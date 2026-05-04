@@ -16,7 +16,7 @@ CI/DI
 │  - Unit tests / Integration tests                                     │
 │  - Build Docker images:                                                │
 │      * llm-api (gateway+router merged)                                 │
-│      * bert-worker / vllm-worker / trt-worker                          │
+│      * vllm-worker (vLLM only; TensorRT/BERT removed)                  │
 │  - Tag images with semantic versioning (e.g., v1.2.3)                 │
 │  - Push images to Docker Registry                                     │
 │  (Note: Can be migrated to Kubernetes cluster using Actions Runner Controller)│
@@ -27,7 +27,6 @@ CI/DI
 │                    Docker Registry                                     │
 │  your-registry/llm-api                                                 │
 │  your-registry/vllm-worker                                             │
-│  your-registry/trt-worker                                              │
 └───────────────────────┬──────────────────────────────────────────────┘
                             │ Image Scan
 ════════════════════════ ArgoCD Namespace (Control Plane) ══════════════════════
@@ -106,44 +105,43 @@ CI/DI
    │                             │           │ - Request validation          │
    │                             │           │ - High-level API semantics   │
    │                             │           │ - Forwards directly to        │
-   │                             │           │   workers                     │
+   │                             │           │   vllm-worker                 │
    │                             │           │   (router merged into this)   │
    └─────────────────────────────┘           └───────────────┬──────────────┘
                                                              │
                                                              ▼
 
 ════════════════════════ Router (merged into llm-api) ═══════════════════════════
-  Note: The original router's "multi-model scheduling" responsibility has been
-        merged into llm-api, which forwards directly to the workers. If more
-        complex routing strategies are needed later, the router can be split
-        out again as an independent service.
+  Note: Current single-model setup (qwen2.5-0.5b). The original router's
+        "multi-model scheduling" responsibility has been merged into llm-api,
+        which forwards directly to vllm-worker. If BERT-style encoder models
+        are introduced later (vLLM does not support them; a separate worker
+        is required), the router can be split out again.
 
-                        ┌─────────────────┬───────────────────┐
-                        │                 │                   │
-                        ▼                 ▼                   ▼
+                                          │
+                                          ▼
 
-═══════════ Multi-Model Worker Services (Three Internal L4 Gateways) ════════════
+═══════════ vLLM Worker Service (Internal L4 Gateway) ═══════════════════════════
 
-      ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
-      │ bert-worker-service    │ │ vllm-worker-service    │ │ trt-worker-service     │
-      │      (ClusterIP)       │ │      (ClusterIP)       │ │      (ClusterIP)       │
-      │ - BERT / embed / CPU   │ │ - vLLM large-model     │ │ - TensorRT-LLM high    │
-      │   inference            │ │   inference            │ │   throughput inference │
-      └───────────┬────────────┘ └───────────┬────────────┘ └───────────┬────────────┘
-                  │                          │                           │
-                  ▼                          ▼                           ▼
+                            ┌────────────────────────┐
+                            │ vllm-worker-service    │
+                            │      (ClusterIP)       │
+                            │ - vLLM large-model     │
+                            │   inference            │
+                            └───────────┬────────────┘
+                                        │
+                                        ▼
 
-════════════════════ LLM Worker Pods (Actual GPU / CPU Inference) ════════════════
+════════════════════ vLLM Worker Pods (GPU Inference) ════════════════════════════
 
-      ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
-      │    BERT Worker Pods    │ │    vLLM Worker Pods    │ │ TensorRT-LLM Pods      │
-      │ - Embeddings / CLS     │ │ - KV Cache / LLM Gen   │ │ - Optimized GPU infer. │
-      │ - CPU or GPU           │ │ - Requires GPU         │ │ - Requires GPU         │
-      └───────────┬────────────┘ └───────────┬────────────┘ └───────────┬────────────┘
-                  │                          │                           │
-                  └──────────────┬───────────┴───────────────┬───────────┘
-                                 │                           │
-                                 ▼                           ▼
+                            ┌────────────────────────┐
+                            │    vLLM Worker Pods    │
+                            │ - KV Cache / LLM Gen   │
+                            │ - Requires GPU         │
+                            │ - Mounts /model        │
+                            └───────────┬────────────┘
+                                        │
+                                        ▼
 
 ════════════════════════════ Storage Layer (Models) ══════════════════════════════
 
@@ -158,7 +156,7 @@ CI/DI
 ══════════════════════ Zero-Trust Network Policies (llm ns) ═════════════════════
 
    - Allow ingress-nginx → api-gateway-service
-   - Allow llm-api Pods → bert/vllm/trt worker-service
+   - Allow llm-api Pods → vllm-worker-service
    - Default deny for all cross-namespace traffic
 
 
@@ -169,7 +167,7 @@ CI/DI
     │  Scrape Targets:                                                     │
     │   - llm-web-service.llm.svc:    HTTP RPS / error rate / latency      │
     │   - api-gateway-service.llm.svc: API QPS / concurrency / error types  │
-    │   - bert/vllm/trt workers:      tokens/sec / throughput / latency    │
+    │   - vllm-worker:                tokens/sec / throughput / latency    │
     │   - node-exporter:              CPU / RAM / Disk                     │
     │   - dcgm-exporter:              GPU util / memory / temp / ECC       │
     │   - kube-state-metrics:         Pod/Deployment/Node health           │

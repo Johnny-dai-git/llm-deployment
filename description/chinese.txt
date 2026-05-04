@@ -16,7 +16,7 @@ CI/DI
 │  - 单元测试 / 集成测试                                                 │
 │  - 构建 Docker 镜像：                                                  │
 │      * llm-api（gateway+router 合并）                                  │
-│      * bert-worker / vllm-worker / trt-worker                          │
+│      * vllm-worker（当前仅支持 vLLM）                                  │
 │  - 镜像打 Tag（semver: v1.2.3）                                        │
 │  - Push 到 Docker Registry                                             │
 │  (注：未来可迁移到 Kubernetes 集群内运行，使用 Actions Runner Controller)│
@@ -27,7 +27,6 @@ CI/DI
 │                    Docker Registry                                   │
 │  your-registry/llm-api                                               │
 │  your-registry/vllm-worker                                           │
-│  your-registry/trt-worker                                            │
 └───────────────────────┬──────────────────────────────────────────────┘
                             │ Image Scan
 ════════════════════════ argocd 命名空间（控制平面）══════════════════════════
@@ -108,42 +107,40 @@ CI/DI
    │        llm-web Pods         │           │         llm-api Pods          │
    │  (静态网页 / Chat UI)       │           │ - 鉴权 / 限流 / 日志           │
    │                             │           │ - 请求校验 / 业务封装         │
-   │                             │           │ - 直接转发到各 worker          │
+   │                             │           │ - 直接转发到 vllm-worker       │
    │                             │           │   (原 router 已合并入此服务)   │
    └─────────────────────────────┘           └───────────────┬──────────────┘
                                                              │
                                                              ▼
 
 ═══════════════════════ Router（已合并至 llm-api）═══════════════════════════════
-  注：原 router 的"多模型调度"职责已并入 llm-api 直接转发。
-      未来如需更复杂的路由策略，可再把 router 拆出来独立部署。
+  注：当前为单模型场景（qwen2.5-0.5b），原 router 的"多模型调度"职责
+      已并入 llm-api 直接转发。如果将来引入 BERT 类 encoder 模型
+      （vLLM 不支持，需独立服务），再把 router 拆出来独立部署。
 
-                        ┌─────────────────┬───────────────────┐
-                        │                 │                   │
-                        ▼                 ▼                   ▼
+                                          │
+                                          ▼
 
-═══════════ 多模型 Worker 服务（集群内部的三类 L4 LB）═══════════════════════════
+═══════════ vLLM Worker 服务（集群内部 L4 LB）═══════════════════════════════════
 
-      ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
-      │ bert-worker-service    │ │ vllm-worker-service    │ │ trt-worker-service     │
-      │ (ClusterIP)            │ │ (ClusterIP)            │ │ (ClusterIP)            │
-      │ - BERT 轻模型服务      │ │ - vLLM 大模型推理      │ │ - TensorRT-LLM 加速    │
-      └───────────┬────────────┘ └───────────┬────────────┘ └───────────┬────────────┘
-                  │                          │                           │
-                  ▼                          ▼                           ▼
+                            ┌────────────────────────┐
+                            │ vllm-worker-service    │
+                            │ (ClusterIP)            │
+                            │ - vLLM 大模型推理      │
+                            └───────────┬────────────┘
+                                        │
+                                        ▼
 
-══════════════════════ LLM Worker Pods（真实 GPU 推理层）═══════════════════════
+══════════════════════ vLLM Worker Pods（GPU 推理层）═══════════════════════════
 
-      ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
-      │   BERT Worker Pods     │ │    vLLM Worker Pods    │ │ TensorRT-LLM Pods      │
-      │ - 嵌入/分类任务         │ │ - KV cache / 大模型推理 │ │ - 高吞吐低延迟推理      │
-      │ - CPU/GPU              │ │ - GPU 必需             │ │ - GPU 必需             │
-      │ - 挂载 /model          │ │ - 挂载 /model          │ │ - 挂载 /model          │
-      └───────┬────────────────┘ └───────────┬────────────┘ └───────────┬────────────┘
-              │                                │                            │
-              └──────────────┬─────────────────┴────────────────────────────┘
-                             │
-                             ▼
+                            ┌────────────────────────┐
+                            │    vLLM Worker Pods    │
+                            │ - KV cache / 大模型推理 │
+                            │ - GPU 必需             │
+                            │ - 挂载 /model          │
+                            └───────────┬────────────┘
+                                        │
+                                        ▼
 
 ════════════════════════════ Storage（模型存储）══════════════════════════════════
 
@@ -158,7 +155,7 @@ CI/DI
 ══════════════════════ NetworkPolicy（零信任网络边界）═══════════════════════════
 
    - 只允许 ingress-nginx → api-gateway-service
-   - 只允许 llm-api Pods → 各类 worker-service
+   - 只允许 llm-api Pods → vllm-worker-service
    - 默认拒绝跨命名空间访问
 
 
@@ -170,7 +167,7 @@ CI/DI
     │  抓取：                                                             │
     │   - llm-web-service.llm.svc:       HTTP RPS / 错误率 / 延迟         │
     │   - api-gateway-service.llm.svc:    API QPS / 并发 / 错误类型        │
-    │   - bert/vllm/trt worker:          tokens/sec / 吞吐 / 延迟         │
+    │   - vllm-worker:                   tokens/sec / 吞吐 / 延迟         │
     │   - gpu-exporter / node-exporter                                     │
     │   - kube-state-metrics                                                │
     └──────────────────────────────────────────────────────────────────────┘

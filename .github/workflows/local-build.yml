@@ -40,8 +40,6 @@ jobs:
               - 'app/gateway/**'
             vllm-worker:
               - 'app/worker/vllm/**'
-            trt-worker:
-              - 'app/worker/tensorRT/**'
             web:
               - 'app/web/**'
 
@@ -94,26 +92,6 @@ jobs:
           push: true
           tags: ${{ steps.meta-vllm.outputs.tags }}
           labels: ${{ steps.meta-vllm.outputs.labels }}
-
-      - name: Extract metadata for trt-worker
-        id: meta-trt
-        if: steps.changes.outputs.trt-worker == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/trt-worker
-          tags: |
-            type=raw,value=${{ steps.timestamp.outputs.VERSION }}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push trt-worker image
-        if: steps.changes.outputs.trt-worker == 'true' || github.event_name == 'workflow_dispatch'
-        uses: docker/build-push-action@v5
-        with:
-          context: ./app/worker/tensorRT
-          file: ./app/worker/tensorRT/Dockerfile
-          push: true
-          tags: ${{ steps.meta-trt.outputs.tags }}
-          labels: ${{ steps.meta-trt.outputs.labels }}
 
       - name: Extract metadata for web
         id: meta-web
