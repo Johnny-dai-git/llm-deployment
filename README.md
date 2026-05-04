@@ -14,23 +14,24 @@ Self-hosted, Kubernetes-based LLM inference platform. OpenAI-compatible API on t
                 │ /api                        │ /web
                 ▼                             ▼
     ┌──────────────────┐            ┌──────────────────┐
-    │  llm-api         │            │  llm-web         │
-    │  (FastAPI)       │            │  (nginx + SSE)   │
-    │  - auth          │            └──────────────────┘
+    │  llm-api         │ ◄─ HPA ◄─  │  llm-web         │
+    │  (FastAPI)       │  CPU>60%   │  (nginx + SSE)   │
+    │  - auth          │  1↔3 reps  └──────────────────┘
     │  - SSE streaming │
     └────────┬─────────┘
              │ HTTP (OpenAI compatible)
              ▼
-    ┌──────────────────┐
-    │  vllm-worker     │
-    │  (vLLM + GPU)    │
+    ┌──────────────────┐ ◄─ HPA ◄─  vllm:num_requests_waiting > 5
+    │  vllm-worker     │  custom    1↔2 reps (GPU slot-bound)
+    │  (vLLM + GPU)    │  metric
     │  - PagedAttn     │
     │  - cont. batching│
     └──────────────────┘
 
-   Observed by: Prometheus + Grafana + DCGM exporter
-   Deployed by: ArgoCD + ArgoCD Image Updater (GitOps)
-   Built by:    GitHub Actions self-hosted runner → GHCR
+   Scaled by:    HPA + metrics-server (CPU) + prometheus-adapter (custom)
+   Observed by:  Prometheus + Grafana + DCGM exporter
+   Deployed by:  ArgoCD + ArgoCD Image Updater (GitOps)
+   Built by:     GitHub Actions self-hosted runner → GHCR
 ```
 
 ## What's Inside
@@ -198,10 +199,37 @@ Business metrics actually flow into Prometheus via `ServiceMonitor` resources:
 
 The `kube-prometheus-stack` selectors are wide open (`{}`) so any ServiceMonitor in any namespace gets scraped — appropriate for a single-team setup.
 
-### Autoscaling
+### Autoscaling (HPA)
 
-- `llm-api` HPA: 1–3 replicas, scales on CPU > 60% (memory > 75% as safety net)
-- `vllm-worker` HPA: 1–2 replicas (limited by GPU time-slicing slots), scales on `vllm_num_requests_waiting > 5` per pod
+Both compute services scale horizontally on real load signals — not on a static replica count. The two HPAs use **different metric backends** because the two services are bottlenecked by different things:
+
+```
+llm-api HPA  (CPU-bound)               vllm-worker HPA  (GPU-bound)
+  metric source: metrics-server          metric source: prometheus-adapter
+  signal: cpu utilization > 60%          signal: vllm:num_requests_waiting > 5/pod
+  range:  1 ↔ 3 replicas                 range:  1 ↔ 2 replicas
+  scaleUp: +100% / 60s                   scaleUp: +1 pod / 120s
+  scaleDown: -50% / 120s                 scaleDown: -1 pod / 300s
+```
+
+**Why different metrics?**
+
+CPU utilization is the right knob for `llm-api` — its work is JSON serialization + httpx forwarding, which loads CPU proportionally to traffic. For `vllm-worker`, CPU is meaningless (the bottleneck is the GPU), so we scale on vLLM's own queue depth: when `num_requests_waiting` per pod stays high, we add another worker.
+
+**Why is `vllm-worker` capped at 2?**
+
+The `nvidia-device-plugin` is configured for time-slicing into 2 slots on a single GPU (`tools/system/nvidia-device-plugin.yaml`). Asking K8s for a third `nvidia.com/gpu: 1` would Pend forever. On a multi-GPU machine (e.g. Lambda), bump the HPA `maxReplicas` and the device plugin slot count together.
+
+**Components required for HPA to work** (all installed by `launch.sh`):
+
+| Component | Provides | Used by |
+|---|---|---|
+| `metrics-server` | CPU/memory resource metrics | `llm-api` HPA |
+| `prometheus-adapter` | `vllm:*` Prometheus series exposed as Custom Metrics API | `vllm-worker` HPA |
+| `kube-prometheus-stack` | The Prometheus that prometheus-adapter reads from | upstream of prometheus-adapter |
+| ServiceMonitors in `tools/llm/` | Make sure `vllm:*` series actually flow into Prometheus | upstream of prometheus-adapter |
+
+**Conservative scaleDown timings** (long stabilization window) are intentional: tearing down a `vllm-worker` Pod loses its KV cache and forces the next request to JIT-compile CUDA kernels again. We trade a few extra minutes of an idle pod for a smoother experience.
 
 ## Common Tasks
 
@@ -246,20 +274,46 @@ vllm:num_requests_running
 DCGM_FI_DEV_GPU_UTIL
 ```
 
-### Trigger a real load test
+### Verify HPA is wired up
+
+```bash
+# 1. The two HPAs should be present:
+kubectl get hpa -n llm
+# NAME          REFERENCE                TARGETS         MINPODS   MAXPODS   REPLICAS
+# llm-api       Deployment/llm-api       12%/60%, ...    1         3         1
+# vllm-worker   Deployment/vllm-worker   0/5             1         2         1
+
+# 2. metrics-server is supplying CPU/memory metrics:
+kubectl top pod -n llm
+# NAME                CPU(cores)   MEMORY(bytes)
+# llm-api-xxx         5m           80Mi
+# vllm-worker-xxx     ...
+
+# 3. prometheus-adapter is exposing the custom metric used by vllm-worker HPA:
+kubectl get --raw \
+  "/apis/custom.metrics.k8s.io/v1beta1/namespaces/llm/pods/*/vllm_num_requests_waiting" \
+  | jq
+
+# If the URL above returns "no metrics returned" before any traffic, that's
+# expected — vLLM only emits the series after the first request.
+```
+
+### Trigger a real load test (and watch HPA react)
 
 ```bash
 # Install hey
 sudo apt install hey
 
-# Hit the gateway
+# Hit the gateway hard
 hey -n 1000 -c 50 -m POST \
   -H "Content-Type: application/json" \
   -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"hi"}],"max_tokens":50}' \
   http://localhost/api/v1/chat/completions
 
-# Watch HPA react
-watch -n 2 'kubectl get hpa -n llm'
+# In another terminal, watch llm-api HPA scale up and replicas go from 1 → 2 → 3
+watch -n 2 'kubectl get hpa -n llm; echo; kubectl get pods -n llm'
+
+# After 5+ minutes idle, scaleDown kicks in and replicas drop back to 1
 ```
 
 ## Lambda Migration Notes
