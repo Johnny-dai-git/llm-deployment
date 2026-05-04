@@ -27,6 +27,14 @@ spec:
             port: 80
           initialDelaySeconds: 2
           periodSeconds: 5
+        livenessProbe:                # nginx 卡死时让 K8s 重启它
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
       volumes:
       - name: html
         configMap:
