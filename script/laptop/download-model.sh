@@ -76,16 +76,24 @@ fi
 log_info "Checking huggingface_hub..."
 if ! python3 -c "import huggingface_hub" 2>/dev/null; then
     log_warn "huggingface_hub 未安装,正在安装..."
-    pip install --quiet -U "huggingface_hub[cli]"
+    pip install --quiet -U "huggingface_hub"
 fi
 
-if ! command -v huggingface-cli >/dev/null 2>&1; then
-    log_error "huggingface-cli not found in PATH after install"
-    log_error "尝试: pip install -U huggingface_hub[cli]"
+# 检测可用的 CLI 命令:
+#   - 1.13+ 用 `hf`
+#   - 老版用 `huggingface-cli`(已 deprecated 但部分老环境还能跑)
+HF_CLI=""
+if command -v hf >/dev/null 2>&1; then
+    HF_CLI="hf"
+elif command -v huggingface-cli >/dev/null 2>&1; then
+    HF_CLI="huggingface-cli"
+else
+    log_error "找不到 hf / huggingface-cli"
+    log_error "尝试: pip install -U huggingface_hub"
     exit 1
 fi
 
-log_info "huggingface_hub OK"
+log_info "huggingface_hub OK (using: ${HF_CLI})"
 echo ""
 
 # ============ 4. 下载 ============
@@ -94,16 +102,29 @@ log_info "0.5B 模型大小约 1 GB,带宽好的话 1-3 分钟"
 echo ""
 
 # 用环境变量传 endpoint(huggingface_hub 会读)
-HF_ENDPOINT="${HF_ENDPOINT_URL}" huggingface-cli download \
-    "${MODEL_NAME}" \
-    --local-dir "${TARGET_DIR}" \
-    --local-dir-use-symlinks False \
-    || {
-        log_error "下载失败"
-        log_error "可能原因: 网络问题 / 镜像源挂了 / 磁盘空间不足"
-        log_error "换官方源试试: HF_ENDPOINT=https://huggingface.co bash $0"
-        exit 1
-    }
+# 新旧 CLI 命令格式略有差异,统一处理
+if [ "${HF_CLI}" = "hf" ]; then
+    HF_ENDPOINT="${HF_ENDPOINT_URL}" hf download \
+        "${MODEL_NAME}" \
+        --local-dir "${TARGET_DIR}" \
+        || {
+            log_error "下载失败"
+            log_error "可能原因: 网络问题 / 镜像源挂了 / 磁盘空间不足"
+            log_error "换官方源试试: HF_ENDPOINT=https://huggingface.co bash $0"
+            exit 1
+        }
+else
+    HF_ENDPOINT="${HF_ENDPOINT_URL}" huggingface-cli download \
+        "${MODEL_NAME}" \
+        --local-dir "${TARGET_DIR}" \
+        --local-dir-use-symlinks False \
+        || {
+            log_error "下载失败"
+            log_error "可能原因: 网络问题 / 镜像源挂了 / 磁盘空间不足"
+            log_error "换官方源试试: HF_ENDPOINT=https://huggingface.co bash $0"
+            exit 1
+        }
+fi
 
 echo ""
 log_info "下载完成,验证文件..."
