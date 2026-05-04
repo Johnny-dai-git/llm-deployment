@@ -2,7 +2,9 @@ name: Build and Push Docker Images
 
 on:
   push:
-    branches: [ "main" ]
+    # main = 稳定线;telemetry = 当前开发主线
+    # push 任一都触发自动构建,这样改代码就能立刻看到 CI 结果
+    branches: [ "main", "telemetry" ]
   workflow_dispatch:  # 允许手动触发
 
 env:
