@@ -1,11 +1,16 @@
 #!/bin/bash
 set -e
 
-# ======= 配置区域 =======
+# ======= 配置区域(可用环境变量覆盖) =======
 GITHUB_USERNAME="${GITHUB_USERNAME:-Johnny-dai-git}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 GITHUB_REPO="${GITHUB_REPO:-llm-deployment}"
-GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+# 默认用 telemetry 分支(开发主线),线上稳定后可切回 main
+GITHUB_BRANCH="${GITHUB_BRANCH:-telemetry}"
+
+# 存储设备:笔记本上多半没有 /dev/sda4,会自动 fallback 到 /var/lib
+STORAGE_DEVICE="${STORAGE_DEVICE:-/dev/sda4}"
+STORAGE_FALLBACK_PATH="${STORAGE_FALLBACK_PATH:-/var/lib}"
 
 if [ -n "${GITHUB_TOKEN}" ]; then
   GITHUB_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
@@ -14,14 +19,22 @@ else
   echo "⚠️  GITHUB_TOKEN not set, using git credential helper"
 fi
 
-STORAGE_DEVICE="/dev/sda4"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INSTALL_DIR="${SCRIPT_DIR}"
 CONTROL_DIR="${REPO_DIR}/tools"
 
+# GPU 检测(全局,后续 Phase 复用)
+HAS_GPU=0
+if lspci 2>/dev/null | grep -i nvidia >/dev/null 2>&1; then
+  HAS_GPU=1
+fi
+
 echo "===== Kubernetes control-plane bootstrap start ====="
+echo ">>> Branch:    ${GITHUB_BRANCH}"
+echo ">>> Has GPU:   $([ $HAS_GPU -eq 1 ] && echo yes || echo no)"
+echo ">>> Storage:   ${STORAGE_DEVICE}(找不到时 fallback 到 ${STORAGE_FALLBACK_PATH})"
+echo ""
 
 # ================================================================
 # Phase 0: git
@@ -51,31 +64,47 @@ sudo bash system.sh
 echo ">>> Labeling node 'system' with system=true"
 kubectl label node system system=true --overwrite || true
 
-# 检测是否为 GPU 节点，如果是则添加 gpu-node=true 标签
-if lspci | grep -i nvidia >/dev/null 2>&1; then
+if [ "${HAS_GPU}" -eq 1 ]; then
     echo ">>> GPU detected, labeling node 'system' with gpu-node=true"
     kubectl label node system gpu-node=true --overwrite || true
 else
     echo ">>> No GPU detected, skipping gpu-node label"
+    echo "⚠️  vllm-worker 需要 nvidia.com/gpu,本节点无 GPU 时它将 Pending"
 fi
 
 # ================================================================
-# Phase 4: infra + GPU
+# Phase 4: infra + GPU(只在 GPU 存在时装)
 # ================================================================
-kubectl apply -f "${CONTROL_DIR}/system/nvidia-device-plugin.yaml" || true
-kubectl rollout status ds/nvidia-device-plugin-daemonset -n kube-system --timeout=60s || true
+if [ "${HAS_GPU}" -eq 1 ]; then
+    echo ">>> 安装 NVIDIA device plugin..."
+    kubectl apply -f "${CONTROL_DIR}/system/nvidia-device-plugin.yaml" || true
+    kubectl rollout status ds/nvidia-device-plugin-daemonset -n kube-system --timeout=60s || true
 
-# RuntimeClass
-kubectl get runtimeclass nvidia >/dev/null 2>&1 || \
-kubectl apply -f "${CONTROL_DIR}/system/runtimeclass-nvidia.yaml"
+    # RuntimeClass
+    kubectl get runtimeclass nvidia >/dev/null 2>&1 || \
+    kubectl apply -f "${CONTROL_DIR}/system/runtimeclass-nvidia.yaml"
+else
+    echo ">>> 无 GPU,跳过 NVIDIA device plugin 与 RuntimeClass"
+fi
 
 # ================================================================
 # Storage (local-path)
+# 优先用 STORAGE_DEVICE 指定的分区,找不到就 fallback 到本地目录
 # ================================================================
-MOUNT_POINT=$(findmnt -n -o TARGET "${STORAGE_DEVICE}" || true)
-[ -z "${MOUNT_POINT}" ] && MOUNT_POINT=$(lsblk -n -o MOUNTPOINT "${STORAGE_DEVICE}" | head -1)
+MOUNT_POINT=""
+if [ -b "${STORAGE_DEVICE}" ]; then
+    MOUNT_POINT=$(findmnt -n -o TARGET "${STORAGE_DEVICE}" 2>/dev/null || true)
+    [ -z "${MOUNT_POINT}" ] && \
+      MOUNT_POINT=$(lsblk -n -o MOUNTPOINT "${STORAGE_DEVICE}" 2>/dev/null | head -1)
+fi
+
+if [ -z "${MOUNT_POINT}" ]; then
+    echo "⚠️  ${STORAGE_DEVICE} 未挂载或不存在,fallback 到 ${STORAGE_FALLBACK_PATH}"
+    MOUNT_POINT="${STORAGE_FALLBACK_PATH}"
+fi
 
 LOCAL_STORAGE_PATH="${MOUNT_POINT}/k8s"
+echo ">>> Local storage path: ${LOCAL_STORAGE_PATH}"
 sudo mkdir -p "${LOCAL_STORAGE_PATH}"
 sudo chmod 755 "${LOCAL_STORAGE_PATH}"
 
@@ -183,17 +212,27 @@ kubectl get application llm-platform-services -n argocd || echo "⚠️  Applica
 echo "✅ ArgoCD Applications deployed"
 
 # ================================================================
-# Monitoring
+# Monitoring(kube-prometheus-stack + DCGM)
+# --reuse-values=false:确保 kps-values.yaml 改动后真的生效
 # ================================================================
+echo "===== Installing kube-prometheus-stack ====="
 helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace \
   -f "${CONTROL_DIR}/helm/monitoring/kps-values.yaml" \
+  --reuse-values=false \
   --wait --timeout 10m
 
-helm upgrade --install dcgm nvidia/dcgm-exporter \
-  -n monitoring \
-  -f "${CONTROL_DIR}/helm/monitoring/dcgm/values.yaml" \
-  --wait --timeout 5m
+# DCGM 只在 GPU 存在时装
+if [ "${HAS_GPU}" -eq 1 ]; then
+    echo "===== Installing DCGM exporter ====="
+    helm upgrade --install dcgm nvidia/dcgm-exporter \
+      -n monitoring \
+      -f "${CONTROL_DIR}/helm/monitoring/dcgm/values.yaml" \
+      --reuse-values=false \
+      --wait --timeout 5m
+else
+    echo ">>> 无 GPU,跳过 DCGM exporter"
+fi
 
 # ================================================================
 # Landing Page
@@ -217,7 +256,33 @@ echo "✅ Landing Page deployed"
 # ================================================================
 # Final check
 # ================================================================
+echo ""
+echo "===== Final cluster state ====="
 kubectl get pods -A
+echo ""
 kubectl get nodes -o wide
+echo ""
+echo "===== Access URLs (hostNetwork=true,直接绑你笔记本 80 端口) ====="
+echo "  Web UI:       http://localhost/web"
+echo "  API:          http://localhost/api/v1/chat/completions"
+echo "  Grafana:      http://localhost/grafana   (匿名 Admin 进得去)"
+echo "  Prometheus:   http://localhost/prometheus"
+echo "  Landing:      http://localhost/"
+echo ""
+echo "===== Verify monitoring is actually scraping ====="
+echo "  在 Prometheus UI 看 targets 页面,应该看到:"
+echo "    - serviceMonitor/llm/llm-api/0   (UP)"
+echo "    - serviceMonitor/llm/vllm-worker/0 (UP)"
+if [ "${HAS_GPU}" -eq 1 ]; then
+    echo "    - serviceMonitor/monitoring/dcgm-exporter/0 (UP)"
+fi
+echo ""
+
+if [ "${HAS_GPU}" -eq 0 ]; then
+    echo "⚠️  本节点无 GPU,vllm-worker 会停在 Pending 状态:"
+    echo "    nodeSelector gpu-node=true 没有节点匹配,且 nvidia.com/gpu: 1 不可满足"
+    echo "    要让 vllm-worker 真跑起来,必须在带 NVIDIA GPU 的节点上部署"
+    echo ""
+fi
 
 echo "🎉 Kubernetes + ArgoCD + Image Updater bootstrap DONE"

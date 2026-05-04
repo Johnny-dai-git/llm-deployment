@@ -126,5 +126,9 @@ spec:
       volumes:
       - name: model-volume
         hostPath:
-          path: /home/ubuntu/k8s/model
+          # 本地开发环境路径(Johnny 笔记本)
+          # 容器内挂载到 /model,vLLM 启动参数 --model=/model/qwen2.5-0.5b
+          # 所以这个目录下要有 qwen2.5-0.5b/ 子目录(放模型权重文件)
+          # 上 Lambda 时改成 /home/ubuntu/k8s/model
+          path: /home/johnny/Desktop/projects/llm-server/models
           type: DirectoryOrCreate

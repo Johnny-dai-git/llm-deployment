@@ -34,7 +34,8 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Johnny-dai-git/llm-deployment.git
-    targetRevision: main
+    # 当前开发主线在 telemetry;稳定后可切回 main
+    targetRevision: telemetry
     path: tools/llm
   destination:
     server: https://kubernetes.default.svc
