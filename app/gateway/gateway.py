@@ -11,7 +11,7 @@ from typing import List, Optional, Literal
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, Field
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 # =====================
 # Logging
@@ -70,6 +70,7 @@ class ChatCompletionRequest(BaseModel):
     messages: List[ChatMessage]
     max_tokens: int = 128
     temperature: float = 0.7
+    stream: bool = False              # OpenAI 兼容:true 时走 SSE 流式
 
 
 # =====================
@@ -138,13 +139,54 @@ async def chat_completions(
         "messages": [m.dict() for m in req.messages],
         "max_tokens": req.max_tokens,
         "temperature": req.temperature,
+        "stream": req.stream,
     }
 
     logger.info(
         f"[{request_id}] model={req.model}, messages={len(req.messages)}, "
-        f"max_tokens={req.max_tokens}"
+        f"max_tokens={req.max_tokens}, stream={req.stream}"
     )
 
+    # ============ 流式分支 ============
+    # vLLM 已经支持 stream=true 并以 SSE 格式吐 chunks。
+    # 这里我们做"透传式代理":把 vLLM 的 SSE 流原样转给客户端。
+    if req.stream:
+        async def sse_proxy():
+            try:
+                async with httpx.AsyncClient(timeout=WORKER_TIMEOUT) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{WORKER_URL}/v1/chat/completions",
+                        json=payload,
+                    ) as resp:
+                        resp.raise_for_status()
+                        async for chunk in resp.aiter_raw():
+                            yield chunk
+            except Exception as e:
+                # SSE 中途出错:headers 已经发出去,只能 yield 一个错误事件
+                logger.exception(f"[{request_id}] streaming error: {e}")
+                err_payload = (
+                    f'data: {{"error": {{"message": "{str(e)[:200]}", '
+                    f'"type": "{type(e).__name__}"}}}}\n\n'
+                    f'data: [DONE]\n\n'
+                )
+                yield err_payload.encode()
+            finally:
+                latency = time.time() - start
+                API_LATENCY.labels(endpoint=endpoint).observe(latency)
+                logger.info(f"[{request_id}] stream done in {latency:.3f}s")
+
+        return StreamingResponse(
+            sse_proxy(),
+            media_type="text/event-stream",
+            headers={
+                # 显式告知任何中间代理"别 buffer 我"
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # ============ 非流式分支(原有逻辑) ============
     try:
         async with httpx.AsyncClient(timeout=WORKER_TIMEOUT) as client:
             resp = await client.post(

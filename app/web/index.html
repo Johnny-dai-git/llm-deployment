@@ -2,183 +2,579 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>LLM Chat Interface</title>
+<title>LLM Chat</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+<!-- Markdown 渲染:小巧、纯前端 -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+
 <style>
-* { margin:0; padding:0; box-sizing:border-box; }
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, sans-serif;
-    background: linear-gradient(135deg,#667eea,#764ba2);
-    height:100vh; display:flex; justify-content:center; align-items:center;
-}
-.container {
-    background:white; border-radius:20px; width:90%; max-width:800px;
-    height:80vh; display:flex; flex-direction:column;
-    box-shadow:0 20px 60px rgba(0,0,0,.3);
-}
-.header {
-    background: linear-gradient(135deg,#667eea,#764ba2);
-    color:white; padding:20px; text-align:center;
-    border-radius:20px 20px 0 0;
-}
-.chat-area {
-    flex:1; padding:20px; overflow-y:auto; background:#f5f5f5;
-}
-.message { display:flex; margin-bottom:15px; }
-.message.user { justify-content:flex-end; }
-.message-content {
-    max-width:70%; padding:12px 16px; border-radius:18px;
-}
-.user .message-content { background:#667eea; color:white; }
-.assistant .message-content {
-    background:white; color:#333; box-shadow:0 2px 5px rgba(0,0,0,.1);
-}
-.input-area {
-    padding:20px; display:flex; gap:10px;
-}
-#messageInput {
-    flex:1; padding:12px 16px; border-radius:25px; border:2px solid #e0e0e0;
-}
-#messageInput:focus { border-color:#667eea; outline:none; }
-#sendButton {
-    padding:12px 24px; border-radius:25px; border:none;
-    background: linear-gradient(135deg,#667eea,#764ba2);
-    color:white; font-weight:600; cursor:pointer;
-}
-#sendButton:disabled { opacity:.5; cursor:not-allowed; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --primary: #667eea;
+    --primary-dark: #764ba2;
+    --bg: #f5f7fb;
+    --surface: #ffffff;
+    --text: #1f2937;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --code-bg: #1e1e2e;
+    --code-text: #cdd6f4;
+    --user-grad: linear-gradient(135deg, #667eea, #764ba2);
+    --danger: #ef4444;
+    --success: #10b981;
+  }
+
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .container {
+    background: var(--surface);
+    border-radius: 24px;
+    width: 100%;
+    max-width: 900px;
+    height: min(90vh, 800px);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 70px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+  }
+
+  /* ===== Header ===== */
+  .header {
+    background: var(--user-grad);
+    color: white;
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .header h1 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    letter-spacing: 0.2px;
+  }
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .model-badge {
+    font-size: 0.78rem;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 5px 12px;
+    border-radius: 12px;
+    font-weight: 500;
+    backdrop-filter: blur(8px);
+  }
+  .status {
+    font-size: 0.78rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0.95;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    transition: background 0.2s;
+  }
+  .status-dot.streaming {
+    background: #facc15;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: 0.6; transform: scale(0.85); }
+  }
+
+  /* ===== Chat area ===== */
+  .chat-area {
+    flex: 1;
+    padding: 24px 28px;
+    overflow-y: auto;
+    background: var(--bg);
+    scroll-behavior: smooth;
+  }
+  .chat-area::-webkit-scrollbar { width: 6px; }
+  .chat-area::-webkit-scrollbar-track { background: transparent; }
+  .chat-area::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+  }
+  .chat-area::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  /* ===== Empty state ===== */
+  .empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 60px 20px;
+  }
+  .empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+  .empty-state h3 {
+    color: var(--text);
+    font-size: 1.05rem;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .empty-state p {
+    font-size: 0.9rem;
+  }
+
+  /* ===== Messages ===== */
+  .message {
+    display: flex;
+    margin-bottom: 14px;
+    animation: fadeInUp 0.25s ease-out;
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .message.user { justify-content: flex-end; }
+
+  .bubble {
+    max-width: 78%;
+    padding: 11px 16px;
+    border-radius: 18px;
+    line-height: 1.6;
+    font-size: 0.95rem;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  .user .bubble {
+    background: var(--user-grad);
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .assistant .bubble {
+    background: white;
+    color: var(--text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    border-bottom-left-radius: 4px;
+  }
+
+  /* Markdown 内部样式 */
+  .bubble p { margin-bottom: 8px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble strong { font-weight: 600; }
+  .bubble em { font-style: italic; }
+
+  .bubble code {
+    background: rgba(0, 0, 0, 0.06);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "SF Mono", Monaco, Consolas, "Courier New", monospace;
+    font-size: 0.86em;
+  }
+  .user .bubble code { background: rgba(255, 255, 255, 0.22); }
+
+  .bubble pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 12px 14px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 10px 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .bubble pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: 1em;
+  }
+  .bubble ul, .bubble ol {
+    margin: 6px 0 6px 22px;
+  }
+  .bubble li { margin-bottom: 3px; }
+  .bubble blockquote {
+    border-left: 3px solid var(--primary);
+    padding-left: 12px;
+    margin: 8px 0;
+    color: var(--text-muted);
+  }
+  .bubble a { color: var(--primary); text-decoration: underline; }
+  .user .bubble a { color: white; }
+
+  /* 流式光标 */
+  .cursor {
+    display: inline-block;
+    width: 3px;
+    height: 1em;
+    background: currentColor;
+    vertical-align: text-bottom;
+    margin-left: 2px;
+    animation: blink 0.9s step-end infinite;
+    opacity: 0.6;
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  /* 错误消息 */
+  .bubble.error {
+    background: #fef2f2;
+    color: var(--danger);
+    border: 1px solid #fecaca;
+  }
+
+  /* ===== Input area ===== */
+  .input-area {
+    padding: 16px 20px 18px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    flex-shrink: 0;
+  }
+  .input-wrapper {
+    flex: 1;
+    background: var(--bg);
+    border: 2px solid transparent;
+    border-radius: 18px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    transition: all 0.15s;
+    min-height: 44px;
+  }
+  .input-wrapper:focus-within {
+    border-color: var(--primary);
+    background: white;
+    box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.12);
+  }
+  #messageInput {
+    flex: 1;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-size: 0.95rem;
+    font-family: inherit;
+    color: var(--text);
+    padding: 10px 0;
+  }
+  #messageInput::placeholder {
+    color: var(--text-muted);
+  }
+  #messageInput:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .action-btn {
+    padding: 0 22px;
+    border: none;
+    border-radius: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: all 0.15s;
+    min-width: 84px;
+    height: 44px;
+  }
+  #sendBtn {
+    background: var(--user-grad);
+    color: white;
+  }
+  #sendBtn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px rgba(102, 126, 234, 0.4);
+  }
+  #sendBtn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  #sendBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  #stopBtn {
+    background: var(--danger);
+    color: white;
+    display: none;
+  }
+  #stopBtn.visible {
+    display: block;
+  }
+  #stopBtn:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 5px 14px rgba(239, 68, 68, 0.4);
+  }
+
+  /* 移动端适配 */
+  @media (max-width: 600px) {
+    body { padding: 0; }
+    .container {
+      height: 100vh;
+      border-radius: 0;
+      max-width: 100%;
+    }
+    .header h1 { font-size: 1rem; }
+    .model-badge { display: none; }
+    .bubble { max-width: 88%; }
+    .chat-area { padding: 16px; }
+    .input-area { padding: 12px; }
+  }
 </style>
 </head>
 
 <body>
 <div class="container">
-    <div class="header">
-        <h1>🤖 LLM Chat Interface</h1>
-        <p id="modelInfo">Loading model…</p>
+  <header class="header">
+    <h1>🤖 LLM Chat</h1>
+    <div class="header-meta">
+      <span class="model-badge" id="modelInfo">loading…</span>
+      <span class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Ready</span>
+      </span>
     </div>
+  </header>
 
-    <div class="chat-area" id="chatArea"></div>
+  <main class="chat-area" id="chatArea"></main>
 
-    <div class="input-area">
-        <input id="messageInput" placeholder="Type your message..."
-               onkeypress="if(event.key==='Enter') sendMessage()">
-        <button id="sendButton" onclick="sendMessage()">Send</button>
+  <div class="input-area">
+    <div class="input-wrapper">
+      <input
+        id="messageInput"
+        type="text"
+        placeholder="Ask me anything…"
+        autocomplete="off"
+      >
     </div>
+    <button class="action-btn" id="sendBtn">Send</button>
+    <button class="action-btn" id="stopBtn">Stop</button>
+  </div>
 </div>
 
 <script>
-const API_BASE_URL = '/api';
-let CURRENT_MODEL = 'qwen2.5-0.5b';
-let msgId = 0;
+"use strict";
 
-/* === conversation state === */
-let chatMessages = [
-    { role:'assistant', content:'Hello! I am an AI assistant, how can I help you?' }
-];
+const API_BASE_URL = "/api";
+let currentModel = "qwen2.5-0.5b";
+let chatMessages = [];
+let abortCtrl = null;
+
+// 配置 marked:GFM + 换行转 <br>
+marked.setOptions({ breaks: true, gfm: true });
+
+const $ = (id) => document.getElementById(id);
+const chatArea = $("chatArea");
+const messageInput = $("messageInput");
+const sendBtn = $("sendBtn");
+const stopBtn = $("stopBtn");
+const modelInfo = $("modelInfo");
+const statusDot = $("statusDot");
+const statusText = $("statusText");
 
 renderAll();
 
-/* === load models once === */
-window.onload = async () => {
-    try {
-        const r = await fetch(`${API_BASE_URL}/v1/models`);
-        const j = await r.json();
-        if (j.data?.length) CURRENT_MODEL = j.data[0].id;
-    } catch {}
-    document.getElementById('modelInfo').innerText = `Model: ${CURRENT_MODEL}`;
-};
+window.addEventListener("load", async () => {
+  try {
+    const r = await fetch(`${API_BASE_URL}/v1/models`);
+    const j = await r.json();
+    if (j.data?.length) currentModel = j.data[0].id;
+  } catch (e) {
+    console.warn("models endpoint failed:", e);
+  }
+  modelInfo.textContent = currentModel;
+});
 
-/* === send message === */
+messageInput.addEventListener("keypress", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+sendBtn.addEventListener("click", sendMessage);
+stopBtn.addEventListener("click", () => abortCtrl?.abort());
+
 async function sendMessage() {
-    const input = messageInput;
-    const text = input.value.trim();
-    if (!text) return;
+  const text = messageInput.value.trim();
+  if (!text || abortCtrl) return;
 
-    input.value = '';
-    input.disabled = sendButton.disabled = true;
+  messageInput.value = "";
+  setStreamingUI(true);
 
-    chatMessages.push({ role:'user', content:text });
-    renderAll();
+  chatMessages.push({ role: "user", content: text });
+  chatMessages.push({ role: "assistant", content: "", streaming: true });
+  renderAll();
 
-    const thinkingIndex = chatMessages.length;
-    chatMessages.push({ role:'assistant', content:'Thinking…' });
-    renderAll();
+  const aiIdx = chatMessages.length - 1;
+  abortCtrl = new AbortController();
 
-    try {
-        const resp = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-                model: CURRENT_MODEL,
-                messages: chatMessages.slice(0, -1),
-                max_tokens:512,
-                temperature:0.7
-            })
-        });
+  try {
+    const resp = await fetch(`${API_BASE_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: abortCtrl.signal,
+      body: JSON.stringify({
+        model: currentModel,
+        messages: chatMessages
+          .slice(0, -1)
+          .map(({ role, content }) => ({ role, content })),
+        max_tokens: 512,
+        temperature: 0.7,
+        stream: true,
+      }),
+    });
 
-        if (!resp.ok) {
-            let errorMsg = `API Error: ${resp.status}`;
-            let responseText = '';
-            try {
-                // Try to read response as text first
-                responseText = await resp.clone().text();
-                console.error('[DEBUG] Error response text:', responseText);
-                
-                // Try to parse as JSON
-                try {
-                    const errorData = JSON.parse(responseText);
-                    console.error('[DEBUG] Error response JSON:', errorData);
-                    if (errorData.detail) {
-                        errorMsg += ` ${errorData.detail}`;
-                    } else if (errorData.message) {
-                        errorMsg += ` ${errorData.message}`;
-                    } else {
-                        errorMsg += ` ${responseText.substring(0, 200)}`;
-                    }
-                } catch (jsonErr) {
-                    // Not JSON, use text
-                    if (responseText) {
-                        errorMsg += ` ${responseText.substring(0, 200)}`;
-                    } else {
-                        errorMsg += ` ${resp.statusText}`;
-                    }
-                }
-            } catch (e) {
-                console.error('[DEBUG] Error reading response:', e);
-                errorMsg += ` ${resp.statusText || 'Unknown error'}`;
-            }
-            throw new Error(errorMsg);
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${errText.substring(0, 300)}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        if (payload === "[DONE]") {
+          chatMessages[aiIdx].streaming = false;
+          updateStreamingMessage(aiIdx);
+          return;
         }
-
-        const data = await resp.json();
-        chatMessages[thinkingIndex].content =
-            data.choices?.[0]?.message?.content || 'No response';
-
-    } catch (e) {
-        chatMessages[thinkingIndex].content = `Error: ${e.message}`;
+        try {
+          const obj = JSON.parse(payload);
+          if (obj.error) {
+            throw new Error(obj.error.message || "Worker error");
+          }
+          const delta = obj.choices?.[0]?.delta?.content;
+          if (delta) {
+            chatMessages[aiIdx].content += delta;
+            updateStreamingMessage(aiIdx);
+          }
+        } catch (e) {
+          if (e.message?.startsWith("Worker error")) throw e;
+          console.warn("SSE parse error:", payload, e);
+        }
+      }
     }
 
-    renderAll();
-    input.disabled = sendButton.disabled = false;
-    input.focus();
+    chatMessages[aiIdx].streaming = false;
+    updateStreamingMessage(aiIdx);
+
+  } catch (e) {
+    chatMessages[aiIdx].streaming = false;
+    if (e.name === "AbortError") {
+      chatMessages[aiIdx].content +=
+        (chatMessages[aiIdx].content ? "\n\n" : "") + "*[stopped]*";
+    } else {
+      chatMessages[aiIdx].content = `**Error:** ${e.message}`;
+      chatMessages[aiIdx].error = true;
+    }
+    updateStreamingMessage(aiIdx);
+  } finally {
+    abortCtrl = null;
+    setStreamingUI(false);
+    messageInput.focus();
+  }
 }
 
-/* === render === */
+function setStreamingUI(streaming) {
+  messageInput.disabled = streaming;
+  sendBtn.disabled = streaming;
+  sendBtn.style.display = streaming ? "none" : "block";
+  stopBtn.classList.toggle("visible", streaming);
+  statusDot.classList.toggle("streaming", streaming);
+  statusText.textContent = streaming ? "Generating…" : "Ready";
+}
+
 function renderAll() {
-    chatArea.innerHTML = '';
-    for (const m of chatMessages) {
-        const div = document.createElement('div');
-        div.className = `message ${m.role}`;
-        div.innerHTML = `<div class="message-content">${escape(m.content)}</div>`;
-        chatArea.appendChild(div);
+  if (chatMessages.length === 0) {
+    chatArea.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">💬</div>
+        <h3>Hello!</h3>
+        <p>Ask me anything to start a conversation.</p>
+      </div>
+    `;
+    return;
+  }
+
+  chatArea.innerHTML = "";
+  chatMessages.forEach((m, idx) => {
+    const div = document.createElement("div");
+    div.className = `message ${m.role}`;
+    div.dataset.idx = idx;
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble" + (m.error ? " error" : "");
+
+    if (m.role === "assistant") {
+      bubble.innerHTML = renderContent(m.content, m.streaming);
+    } else {
+      // 用户消息不渲染 markdown,避免误解析
+      bubble.textContent = m.content;
     }
-    chatArea.scrollTop = chatArea.scrollHeight;
+
+    div.appendChild(bubble);
+    chatArea.appendChild(div);
+  });
+  chatArea.scrollTop = chatArea.scrollHeight;
 }
 
-function escape(t) {
-    const d = document.createElement('div');
-    d.textContent = t;
-    return d.innerHTML;
+// 流式更新:只重写正在生成的那条消息,避免每个 token 都重建整个 DOM
+function updateStreamingMessage(idx) {
+  const div = chatArea.querySelector(`.message[data-idx="${idx}"] .bubble`);
+  if (!div) {
+    renderAll();
+    return;
+  }
+  const m = chatMessages[idx];
+  div.classList.toggle("error", !!m.error);
+  div.innerHTML = renderContent(m.content, m.streaming);
+
+  // 跟随滚动:只在用户已经在底部时自动跟
+  const nearBottom =
+    chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight < 100;
+  if (nearBottom) {
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+}
+
+function renderContent(content, isStreaming) {
+  let html = content ? marked.parse(content) : "";
+  if (isStreaming) html += '<span class="cursor"></span>';
+  return html;
 }
 </script>
 </body>
