@@ -50,14 +50,19 @@ spec:
           protocol: TCP
 
         resources:
+          # 资源调优记录:
+          # - qwen2.5-0.5b 实测 host RAM 用量约 3 GB(Python + vLLM + 模型 buffer)
+          # - GPU time-slicing 把 1 张物理卡切成 2 份,HPA 上限 2 副本
+          # - 笔记本节点 30 GB 总 RAM,2 × 4Gi requests = 8Gi,留足 buffer
+          # - 上 Lambda(独占 GPU + 大模型)时调回 16Gi 或更高
           requests:
             nvidia.com/gpu: 1
-            cpu: "2"
-            memory: "16Gi"
+            cpu: "1"
+            memory: "4Gi"
           limits:
             nvidia.com/gpu: 1
-            cpu: "4"
-            memory: "16Gi"
+            cpu: "2"
+            memory: "8Gi"
 
         command:
           - python3
