@@ -1,3 +1,40 @@
+# =====================================================================
+# NVIDIA Device Plugin + Time-Slicing 配置
+#
+# 这份文件做了两件事:
+#   1) ConfigMap 定义 GPU 切片策略
+#      - 当前:把 1 块物理 GPU 切成 2 份 (replicas: 2)
+#      - 让一台 GPU 节点能调度 2 个请求 nvidia.com/gpu: 1 的 Pod
+#      - 注意:这是 time-slicing(时间片),不是真并行
+#        多个 Pod 共享同一块 GPU,K8s 不知道它们在抢
+#   2) DaemonSet 跑 NVIDIA Device Plugin
+#      - --config-file 引用上面的 ConfigMap
+#
+# 上 Lambda H100/A100 时切换到 MIG:
+#   sharing 段去掉,加上:
+#     migStrategy: single  (或 mixed)
+# =====================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nvidia-device-plugin-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    version: v1
+    flags:
+      migStrategy: none
+    sharing:
+      timeSlicing:
+        # renameByDefault: false 表示不把 nvidia.com/gpu 改名,
+        # 保持兼容现有 Deployment 的 nvidia.com/gpu: 1 写法
+        renameByDefault: false
+        # 1 块物理 GPU -> 对外宣称 2 块"虚拟 GPU"
+        # 6 GB 显存上,搭配 vllm --gpu-memory-utilization=0.4 (2.4 GB/份)
+        resources:
+          - name: nvidia.com/gpu
+            replicas: 2
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -41,10 +78,19 @@ spec:
             path: /dev
             type: Directory
 
+        # ⭐ 新增:挂载 timeSlicing 配置
+        - name: device-plugin-config
+          configMap:
+            name: nvidia-device-plugin-config
+
       containers:
         - name: nvidia-device-plugin-ctr
           image: nvcr.io/nvidia/k8s-device-plugin:v0.15.0
           imagePullPolicy: IfNotPresent
+
+          # ⭐ 新增:让 plugin 读取我们的 config.yaml
+          args:
+            - --config-file=/etc/nvidia-device-plugin/config.yaml
 
           env:
             - name: FAIL_ON_INIT_ERROR
@@ -63,5 +109,10 @@ spec:
 
             - name: nvidia-dev
               mountPath: /dev
+
+            # ⭐ 新增
+            - name: device-plugin-config
+              mountPath: /etc/nvidia-device-plugin
+              readOnly: true
 
       restartPolicy: Always

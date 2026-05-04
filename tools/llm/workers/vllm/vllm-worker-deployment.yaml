@@ -13,7 +13,11 @@ metadata:
     argocd-image-updater.argoproj.io/git-branch: main
 
 spec:
-  replicas: 1
+  # 2 副本:跑在同一块 GPU 上(time-slicing 切 2 份),
+  # 提供 Pod 级冗余 + 滚动升级零中断;
+  # 不会增加吞吐(单卡共享),只换"高可用"
+  # 上 Lambda 多 GPU 时这个数字直接生效,跨节点真正负载均衡
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -72,7 +76,9 @@ spec:
 
           # ========= 稳定参数（已本地验证） =========
           - --dtype=float16
-          - --gpu-memory-utilization=0.8
+          # 0.4:6 GB GPU 切 2 份后,每份 ~2.4 GB,够装 0.5B 模型 + KV cache
+          # 上 Lambda 单 Pod 独占 GPU 时改回 0.8 或更高
+          - --gpu-memory-utilization=0.4
           - --max-model-len=2048
           - --max-num-seqs=8
           - --max-num-batched-tokens=2048
