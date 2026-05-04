@@ -8,9 +8,12 @@ GITHUB_REPO="${GITHUB_REPO:-llm-deployment}"
 # 默认用 telemetry 分支(开发主线),线上稳定后可切回 main
 GITHUB_BRANCH="${GITHUB_BRANCH:-telemetry}"
 
-# 存储设备:笔记本上多半没有 /dev/sda4,会自动 fallback 到 /var/lib
+# 存储设备:台式机/服务器走 /dev/sda4,笔记本上没这分区时 fallback 到项目目录
+# fallback 路径:脚本会再拼一层 /k8s,所以最终 PV 落在
+#   /home/johnny/Desktop/projects/llm-server/data/k8s
+# 优点:跟项目代码同一棵目录树,重启保留,备份迁移方便,跟 etcd/containerd 不抢 IO
 STORAGE_DEVICE="${STORAGE_DEVICE:-/dev/sda4}"
-STORAGE_FALLBACK_PATH="${STORAGE_FALLBACK_PATH:-/var/lib}"
+STORAGE_FALLBACK_PATH="${STORAGE_FALLBACK_PATH:-/home/johnny/Desktop/projects/llm-server/data}"
 
 if [ -n "${GITHUB_TOKEN}" ]; then
   GITHUB_URL="https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${GITHUB_REPO}.git"
@@ -53,6 +56,73 @@ cd "${REPO_DIR}"
 # ================================================================
 cd "${INSTALL_DIR}"
 sudo bash all_install.sh
+
+# ================================================================
+# Phase 2.5: containerd 配置对齐
+# ----------------------------------------------------------------
+# 这一步要解决两个互相纠缠的坑,顺序很重要:
+#
+# 坑 1 — cgroup driver 不一致(必修):
+#   Ubuntu 默认 cgroup v2 + kubeadm kubelet cgroupDriver=systemd,
+#   但 containerd 如果用编译进去的默认配置(没有 /etc/containerd/config.toml),
+#   默认 SystemdCgroup=false,用 cgroupfs。两边不一致 → kubelet 起不来
+#   static pod(etcd/apiserver/controller-manager/scheduler 启动 ~14s 后被
+#   SIGTERM,死循环重启)。
+#   修复:生成默认 config.toml 并把所有 SystemdCgroup 改成 true。
+#
+# 坑 2 — nvidia runtime handler 丢失(GPU 节点必修):
+#   生成默认配置会擦掉 nvidia-container-toolkit 注入的 runtimes.nvidia
+#   block。结果:RuntimeClass 'nvidia' 的 pod(vllm-worker / dcgm-exporter)
+#   会一直 ContainerCreating,Events 里报
+#     "no runtime for 'nvidia' is configured"
+#   修复:用 nvidia-ctk 把 nvidia runtime 注回 containerd 配置。
+#   nvidia-ctk 可能把新加的 nvidia block 的 SystemdCgroup 写成 false,
+#   所以最后再做一次 sed 'true' 兜底。
+#
+# 必须放在 system.sh(kubeadm init)之前,否则控制面起来就崩。
+# ================================================================
+echo ">>> Phase 2.5: 对齐 containerd 配置(cgroup + nvidia runtime)"
+sudo mkdir -p /etc/containerd
+NEED_RESTART_CONTAINERD=0
+
+# (1) 确保 SystemdCgroup = true
+if [ ! -f /etc/containerd/config.toml ] || ! grep -q "SystemdCgroup = true" /etc/containerd/config.toml 2>/dev/null; then
+    echo "    - 生成默认 containerd 配置并启用 SystemdCgroup"
+    sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
+    sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+    NEED_RESTART_CONTAINERD=1
+else
+    echo "    ✔ containerd 已是 SystemdCgroup=true"
+fi
+
+# (2) GPU 节点:把 nvidia runtime handler 注入 containerd 配置
+if [ "${HAS_GPU}" -eq 1 ]; then
+    if command -v nvidia-ctk >/dev/null 2>&1; then
+        if ! grep -q 'runtimes\.nvidia' /etc/containerd/config.toml 2>/dev/null; then
+            echo "    - 用 nvidia-ctk 注入 nvidia runtime handler"
+            sudo nvidia-ctk runtime configure --runtime=containerd --config=/etc/containerd/config.toml
+            # nvidia-ctk 可能在新加的 block 里把 SystemdCgroup 写成 false,统一改回 true
+            sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+            NEED_RESTART_CONTAINERD=1
+        else
+            echo "    ✔ containerd 已有 nvidia runtime handler"
+        fi
+    else
+        echo "    ⚠️  HAS_GPU=1 但找不到 nvidia-ctk,RuntimeClass 'nvidia' 的 pod 会卡住"
+        echo "       请确认 all_install.sh 装了 nvidia-container-toolkit"
+    fi
+fi
+
+# (3) 需要重启才生效
+if [ "${NEED_RESTART_CONTAINERD}" -eq 1 ]; then
+    echo "    - 重启 containerd 让配置生效"
+    sudo systemctl restart containerd
+    for i in $(seq 1 10); do
+        [ -S /run/containerd/containerd.sock ] && break
+        sleep 1
+    done
+fi
+echo "    ✔ Phase 2.5 完成"
 
 # ================================================================
 # Phase 3: k8s init
