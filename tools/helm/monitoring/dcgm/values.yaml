@@ -11,7 +11,9 @@ resources:
   limits:
     memory: 1Gi
 
-# Node Selector（匹配当前配置）
+# Node Selector
+# DCGM 只关心"哪里有 GPU",跟节点是否承担 system 角色无关。
+# 之前误加了 system: "true",在多节点(GPU 节点不带 system 标签)
+# 时会导致 DCGM Pod 调度不上,这里去掉。
 nodeSelector:
-  system: "true"
   gpu-node: "true"
