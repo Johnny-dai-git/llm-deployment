@@ -15,7 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY gateway.py /app/gateway.py
 
 ENV PYTHONUNBUFFERED=1 \
-    ROUTER_URL=http://llm-router:8001
+    VLLM_WORKER_HOST=vllm-worker-service.llm.svc.cluster.local \
+    VLLM_WORKER_PORT=8002 \
+    WORKER_TIMEOUT=300
 
 EXPOSE 8000
 

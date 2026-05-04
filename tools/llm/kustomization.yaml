@@ -4,14 +4,10 @@ kind: Kustomization
 namespace: llm
 
 resources:
-  # API services
+  # API services (gateway+router merged into a single llm-api)
   - api/llm-api-deployment.yaml
   - api/api-gateway-service.yaml
-  
-  # Router services
-  - router/router-deployment.yaml
-  - router/router-service.yaml
-  
+
   # Web frontend
   - web/llm-web-deployment.yaml
   - web/llm-web-service.yaml

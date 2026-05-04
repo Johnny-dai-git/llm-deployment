@@ -4,7 +4,7 @@ CI/DI
 
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    Developer Local Environment                         │
-│  - llm-api / router / worker source code                               │
+│  - llm-api / worker source code (llm-api = gateway+router merged)      │
 │  - Dockerfile / Kubernetes YAML / Helm                                 │
 │  - Git commit & push                                                   │
 └───────────────────────┬──────────────────────────────────────────────┘
@@ -15,8 +15,7 @@ CI/DI
 │   (Self-hosted Runner, running on local machine)                      │
 │  - Unit tests / Integration tests                                     │
 │  - Build Docker images:                                                │
-│      * llm-api                                                         │
-│      * router                                                          │
+│      * llm-api (gateway+router merged)                                 │
 │      * bert-worker / vllm-worker / trt-worker                          │
 │  - Tag images with semantic versioning (e.g., v1.2.3)                 │
 │  - Push images to Docker Registry                                     │
@@ -27,7 +26,6 @@ CI/DI
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    Docker Registry                                     │
 │  your-registry/llm-api                                                 │
-│  your-registry/router                                                  │
 │  your-registry/vllm-worker                                             │
 │  your-registry/trt-worker                                              │
 └───────────────────────┬──────────────────────────────────────────────┘
@@ -46,7 +44,7 @@ CI/DI
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    Git Repository (GitOps Source of Truth)             │
 │  - All Kubernetes manifests stored in Git                              │
-│  - llm / ingress / router / worker deployments                         │
+│  - llm / ingress / worker deployments                                  │
 │  - Image tags maintained automatically                                 │
 └───────────────────────┬──────────────────────────────────────────────┘
                             │ Git Diff Detection
@@ -106,20 +104,21 @@ CI/DI
    │         llm-web Pods        │           │           llm-api Pods        │
    │ (Static UI / Chat Frontend) │           │ - Auth / rate limit / logging │
    │                             │           │ - Request validation          │
-   └─────────────────────────────┘           │ - High-level API semantics    │
-                                             └───────────────┬──────────────┘
+   │                             │           │ - High-level API semantics   │
+   │                             │           │ - Forwards directly to        │
+   │                             │           │   workers                     │
+   │                             │           │   (router merged into this)   │
+   └─────────────────────────────┘           └───────────────┬──────────────┘
                                                              │
                                                              ▼
 
-════════════════════════ Router (Central Multi-Model Scheduler) ═════════════════
+════════════════════════ Router (merged into llm-api) ═══════════════════════════
+  Note: The original router's "multi-model scheduling" responsibility has been
+        merged into llm-api, which forwards directly to the workers. If more
+        complex routing strategies are needed later, the router can be split
+        out again as an independent service.
 
-                            ┌───────────────────────────┐
-                            │   router-service (L7 LB)  │
-                            │ - Central multi-model LB   │
-                            │ - Dispatching and routing  │
-                            └─────────────┬─────────────┘
-                                          │
-                        ┌─────────────────┼───────────────────┐
+                        ┌─────────────────┬───────────────────┐
                         │                 │                   │
                         ▼                 ▼                   ▼
 
@@ -158,10 +157,9 @@ CI/DI
 
 ══════════════════════ Zero-Trust Network Policies (llm ns) ═════════════════════
 
-   - Allow ingress-nginx → api-gateway-service  
-   - Allow llm-api Pods → router-service  
-   - Allow router Pods → bert/vllm/trt worker-service  
-   - Default deny for all cross-namespace traffic  
+   - Allow ingress-nginx → api-gateway-service
+   - Allow llm-api Pods → bert/vllm/trt worker-service
+   - Default deny for all cross-namespace traffic
 
 
 ══════════════════════════ monitoring namespace (Observability) ══════════════════
@@ -171,7 +169,6 @@ CI/DI
     │  Scrape Targets:                                                     │
     │   - llm-web-service.llm.svc:    HTTP RPS / error rate / latency      │
     │   - api-gateway-service.llm.svc: API QPS / concurrency / error types  │
-    │   - router-service.llm.svc:     queue depth / dispatch latency       │
     │   - bert/vllm/trt workers:      tokens/sec / throughput / latency    │
     │   - node-exporter:              CPU / RAM / Disk                     │
     │   - dcgm-exporter:              GPU util / memory / temp / ECC       │
@@ -185,7 +182,7 @@ CI/DI
                         │ - Error rate / RPS        │
                         │ - Model TPS / tokens/sec  │
                         │ - GPU utilization         │
-                        │ - Router queue depth       │
+                        │ - llm-api queue depth      │
                         │ - Cluster/node health      │
                         └──────────────────────────┘
 

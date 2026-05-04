@@ -4,7 +4,7 @@ CI/DI
 
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        开发者本地环境                                  │
-│  - llm-api / router / worker 代码                                     │
+│  - llm-api / worker 代码（llm-api = gateway+router 合并）              │
 │  - Dockerfile / Kubernetes YAML / Helm                                │
 │  - Git Commit & Push                                                   │
 └───────────────────────┬──────────────────────────────────────────────┘
@@ -15,8 +15,7 @@ CI/DI
 │   (Self-hosted Runner，运行在本地机器上)                              │
 │  - 单元测试 / 集成测试                                                 │
 │  - 构建 Docker 镜像：                                                  │
-│      * llm-api                                                         │
-│      * router                                                          │
+│      * llm-api（gateway+router 合并）                                  │
 │      * bert-worker / vllm-worker / trt-worker                          │
 │  - 镜像打 Tag（semver: v1.2.3）                                        │
 │  - Push 到 Docker Registry                                             │
@@ -27,7 +26,6 @@ CI/DI
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    Docker Registry                                   │
 │  your-registry/llm-api                                               │
-│  your-registry/router                                                │
 │  your-registry/vllm-worker                                           │
 │  your-registry/trt-worker                                            │
 └───────────────────────┬──────────────────────────────────────────────┘
@@ -46,7 +44,7 @@ CI/DI
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    Git 仓库（GitOps 单一事实源）                        │
 │  - 所有 Kubernetes YAML                                                │
-│  - llm / ingress / router / worker                                     │
+│  - llm / ingress / worker                                              │
 │  - Image tag 由 Image Updater 自动维护                                 │
 └───────────────────────┬──────────────────────────────────────────────┘
                             │ Git Diff
@@ -110,19 +108,17 @@ CI/DI
    │        llm-web Pods         │           │         llm-api Pods          │
    │  (静态网页 / Chat UI)       │           │ - 鉴权 / 限流 / 日志           │
    │                             │           │ - 请求校验 / 业务封装         │
+   │                             │           │ - 直接转发到各 worker          │
+   │                             │           │   (原 router 已合并入此服务)   │
    └─────────────────────────────┘           └───────────────┬──────────────┘
                                                              │
                                                              ▼
 
-═══════════════════════ Router（调度与多模型路由）═══════════════════════════════
+═══════════════════════ Router（已合并至 llm-api）═══════════════════════════════
+  注：原 router 的"多模型调度"职责已并入 llm-api 直接转发。
+      未来如需更复杂的路由策略，可再把 router 拆出来独立部署。
 
-                            ┌───────────────────────────┐
-                            │   router-service (L7 LB)  │
-                            │ - 多模型调度核心组件       │
-                            │ - 选择合适的 worker       │
-                            └─────────────┬─────────────┘
-                                          │
-                        ┌─────────────────┼───────────────────┐
+                        ┌─────────────────┬───────────────────┐
                         │                 │                   │
                         ▼                 ▼                   ▼
 
@@ -161,10 +157,9 @@ CI/DI
 
 ══════════════════════ NetworkPolicy（零信任网络边界）═══════════════════════════
 
-   - 只允许 ingress-nginx → api-gateway-service  
-   - 只允许 llm-api Pods → router-service  
-   - 只允许 router Pods → 各类 worker-service  
-   - 默认拒绝跨命名空间访问  
+   - 只允许 ingress-nginx → api-gateway-service
+   - 只允许 llm-api Pods → 各类 worker-service
+   - 默认拒绝跨命名空间访问
 
 
 
@@ -175,7 +170,6 @@ CI/DI
     │  抓取：                                                             │
     │   - llm-web-service.llm.svc:       HTTP RPS / 错误率 / 延迟         │
     │   - api-gateway-service.llm.svc:    API QPS / 并发 / 错误类型        │
-    │   - router-service.llm.svc:        队列长度 / 分发延迟              │
     │   - bert/vllm/trt worker:          tokens/sec / 吞吐 / 延迟         │
     │   - gpu-exporter / node-exporter                                     │
     │   - kube-state-metrics                                                │
@@ -187,7 +181,7 @@ CI/DI
                         │ - API 延迟 p50/p95/p99   │
                         │ - 模型吞吐与 tokens/sec  │
                         │ - GPU 利用率 / 显存 / ECC │
-                        │ - router 排队深度         │
+                        │ - llm-api 排队深度        │
                         │ - 节点与 Pod 健康         │
                         └──────────────────────────┘
 

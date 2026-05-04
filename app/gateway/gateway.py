@@ -1,4 +1,6 @@
 # gateway/gateway.py
+# 合并自原 gateway + router 两个组件,直接面向 vllm-worker。
+# 当前为单模型场景;未来上多模型时可再拆出独立 router。
 
 import os
 import time
@@ -14,48 +16,43 @@ from fastapi.responses import Response
 # =====================
 # Logging
 # =====================
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger("gateway")
-
-log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
-logger.setLevel(getattr(logging, log_level, logging.INFO))
+logger = logging.getLogger("llm-api")
 
 # =====================
-# Router config
+# Worker config(直接指向 vllm-worker,不再经过 router)
 # =====================
-ROUTER_SERVICE_HOST = os.environ.get("ROUTER_SERVICE_HOST")
-ROUTER_SERVICE_PORT = os.environ.get("ROUTER_SERVICE_PORT", "80")
-
-if ROUTER_SERVICE_HOST:
-    ROUTER_URL = f"http://{ROUTER_SERVICE_HOST}:{ROUTER_SERVICE_PORT}"
-else:
-    ROUTER_URL = os.environ.get(
-        "ROUTER_URL",
-        "http://router-service.llm.svc.cluster.local:80",
-    )
-
-logger.info(f"Using ROUTER_URL: {ROUTER_URL}")
+WORKER_HOST = os.environ.get(
+    "VLLM_WORKER_HOST", "vllm-worker-service.llm.svc.cluster.local"
+)
+WORKER_PORT = os.environ.get("VLLM_WORKER_PORT", "8002")
+WORKER_URL = f"http://{WORKER_HOST}:{WORKER_PORT}"
+logger.info(f"Using WORKER_URL: {WORKER_URL}")
 
 EXPECTED_API_KEY = os.environ.get("API_KEY")  # optional
+
+# 请求超时(LLM 长生成需要较长时间,默认 300s)
+WORKER_TIMEOUT = float(os.environ.get("WORKER_TIMEOUT", "300"))
 
 # =====================
 # FastAPI app
 # =====================
-app = FastAPI(title="LLM API Gateway (OpenAI-compatible)")
+app = FastAPI(title="LLM API (OpenAI-compatible, gateway+router merged)")
 
 # =====================
 # Prometheus metrics
 # =====================
-GATEWAY_REQUESTS = Counter(
-    "gateway_requests_total",
+API_REQUESTS = Counter(
+    "llm_api_requests_total",
     "Total API requests",
     ["endpoint"],
 )
-GATEWAY_LATENCY = Histogram(
-    "gateway_request_latency_seconds",
+API_LATENCY = Histogram(
+    "llm_api_request_latency_seconds",
     "API request latency",
     ["endpoint"],
 )
@@ -75,20 +72,6 @@ class ChatCompletionRequest(BaseModel):
     temperature: float = 0.7
 
 
-class ChatCompletionChoice(BaseModel):
-    index: int
-    message: ChatMessage
-    finish_reason: str
-
-
-class ChatCompletionResponse(BaseModel):
-    id: str
-    object: str = "chat.completion"
-    created: int
-    model: str
-    choices: List[ChatCompletionChoice]
-
-
 # =====================
 # Helpers
 # =====================
@@ -96,7 +79,9 @@ def check_api_key(authorization: Optional[str]):
     if EXPECTED_API_KEY is None:
         return
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+        raise HTTPException(
+            status_code=401, detail="Missing or invalid Authorization header"
+        )
     token = authorization.split(" ", 1)[1].strip()
     if token != EXPECTED_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid API key")
@@ -107,7 +92,7 @@ def check_api_key(authorization: Optional[str]):
 # =====================
 @app.get("/health")
 def health():
-    return {"status": "ok", "router_url": ROUTER_URL}
+    return {"status": "ok", "worker_url": WORKER_URL}
 
 
 @app.get("/metrics")
@@ -133,210 +118,69 @@ def list_models():
 
 
 # =====================
-# Core API: /v1/chat/completions
+# Core API: /v1/chat/completions —— 直接打 vllm-worker
 # =====================
-@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+@app.post("/v1/chat/completions")
 async def chat_completions(
     req: ChatCompletionRequest,
     authorization: Optional[str] = Header(default=None),
 ):
-    request_id = f"gw_{int(time.time() * 1000)}"
+    request_id = f"api_{int(time.time() * 1000)}"
     endpoint = "/v1/chat/completions"
-    # #region agent log
-    import json
-    debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:139","message":"Gateway request received","data":{"model":req.model,"messages_count":len(req.messages),"max_tokens":req.max_tokens,"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
-    logger.info(f"[DEBUG] {json.dumps(debug_data)}")
-    try:
-        with open('/tmp/debug.log', 'a') as f:
-            f.write(json.dumps(debug_data)+'\n')
-    except Exception as e:
-        logger.warning(f"[DEBUG] Failed to write log file: {e}")
-    # #endregion
 
-    logger.info(
-        f"[{request_id}] model={req.model}, messages={len(req.messages)}, max_tokens={req.max_tokens}"
-    )
-
-    GATEWAY_REQUESTS.labels(endpoint=endpoint).inc()
+    API_REQUESTS.labels(endpoint=endpoint).inc()
     start = time.time()
 
     check_api_key(authorization)
 
-    # 2. Call router with OpenAI-compatible format
     payload = {
         "model": req.model,
-        "messages": [msg.dict() for msg in req.messages],
+        "messages": [m.dict() for m in req.messages],
         "max_tokens": req.max_tokens,
         "temperature": req.temperature,
     }
 
-    # #region agent log
-    import json
-    debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:163","message":"Before router call","data":{"router_url":ROUTER_URL,"payload_keys":list(payload.keys())},"timestamp":int(time.time()*1000)}
-    logger.info(f"[DEBUG] {json.dumps(debug_data)}")
+    logger.info(
+        f"[{request_id}] model={req.model}, messages={len(req.messages)}, "
+        f"max_tokens={req.max_tokens}"
+    )
+
     try:
-        with open('/tmp/debug.log', 'a') as f:
-            f.write(json.dumps(debug_data)+'\n')
-    except Exception as e:
-        logger.warning(f"[DEBUG] Failed to write log file: {e}")
-    # #endregion
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # #region agent log
-            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:166","message":"Calling router","data":{"url":f"{ROUTER_URL}/route_generate"},"timestamp":int(time.time()*1000)}
-            logger.info(f"[DEBUG] {json.dumps(debug_data)}")
-            try:
-                with open('/tmp/debug.log', 'a') as f:
-                    f.write(json.dumps(debug_data)+'\n')
-            except Exception as e:
-                logger.warning(f"[DEBUG] Failed to write log file: {e}")
-            # #endregion
+        async with httpx.AsyncClient(timeout=WORKER_TIMEOUT) as client:
             resp = await client.post(
-                f"{ROUTER_URL}/route_generate",
+                f"{WORKER_URL}/v1/chat/completions",
                 json=payload,
             )
-            # #region agent log
-            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:172","message":"Router response received","data":{"status_code":resp.status_code,"headers":dict(resp.headers)},"timestamp":int(time.time()*1000)}
-            logger.info(f"[DEBUG] {json.dumps(debug_data)}")
-            try:
-                with open('/tmp/debug.log', 'a') as f:
-                    f.write(json.dumps(debug_data)+'\n')
-            except Exception as e:
-                logger.warning(f"[DEBUG] Failed to write log file: {e}")
-            # #endregion
             resp.raise_for_status()
             data = resp.json()
-            # #region agent log
-            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:175","message":"Router response parsed","data":{"has_choices":"choices" in data,"choices_count":len(data.get("choices",[]))},"timestamp":int(time.time()*1000)}
-            logger.info(f"[DEBUG] {json.dumps(debug_data)}")
-            try:
-                with open('/tmp/debug.log', 'a') as f:
-                    f.write(json.dumps(debug_data)+'\n')
-            except Exception as e:
-                logger.warning(f"[DEBUG] Failed to write log file: {e}")
-            # #endregion
 
     except httpx.ConnectError as e:
-        # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:219","message":"Router connection error","data":{"exception_type":type(e).__name__,"exception_msg":str(e),"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
-        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
-        try:
-            with open('/tmp/debug.log', 'a') as f:
-                f.write(json.dumps(debug_data)+'\n')
-        except Exception as e2:
-            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
-        # #endregion
-        logger.error(f"[{request_id}] router connection error: {e}")
-        raise HTTPException(status_code=502, detail=f"Router connection error: {str(e)}")
+        logger.error(f"[{request_id}] worker connection error: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Worker connection error: {e}"
+        )
 
     except httpx.TimeoutException:
-        # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"gateway.py:231","message":"Router timeout","data":{"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
-        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
-        try:
-            with open('/tmp/debug.log', 'a') as f:
-                f.write(json.dumps(debug_data)+'\n')
-        except Exception as e:
-            logger.warning(f"[DEBUG] Failed to write log file: {e}")
-        # #endregion
-        raise HTTPException(status_code=504, detail="Router timeout")
+        logger.error(f"[{request_id}] worker timeout")
+        raise HTTPException(status_code=504, detail="Worker timeout")
 
     except httpx.HTTPStatusError as e:
-        # #region agent log
-        response_text = ""
-        try:
-            if hasattr(e.response, 'text'):
-                response_text = e.response.text[:500]
-        except:
-            pass
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"gateway.py:245","message":"Router HTTP error","data":{"status_code":e.response.status_code,"response_text":response_text,"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
-        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
-        try:
-            with open('/tmp/debug.log', 'a') as f:
-                f.write(json.dumps(debug_data)+'\n')
-        except Exception as e2:
-            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
-        # #endregion
-        logger.error(f"[{request_id}] router HTTP error {e.response.status_code}: {response_text[:100]}")
+        body = e.response.text[:200] if hasattr(e.response, "text") else ""
+        logger.error(
+            f"[{request_id}] worker HTTP {e.response.status_code}: {body}"
+        )
         raise HTTPException(
             status_code=502,
-            detail=f"Router HTTP error {e.response.status_code}: {response_text[:200] if response_text else 'No details'}",
+            detail=f"Worker HTTP error {e.response.status_code}",
         )
 
     except Exception as e:
-        # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"gateway.py:263","message":"Router exception","data":{"exception_type":type(e).__name__,"exception_msg":str(e),"router_url":ROUTER_URL},"timestamp":int(time.time()*1000)}
-        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
-        try:
-            with open('/tmp/debug.log', 'a') as f:
-                f.write(json.dumps(debug_data)+'\n')
-        except Exception as e2:
-            logger.warning(f"[DEBUG] Failed to write log file: {e2}")
-        # #endregion
-        logger.exception(f"[{request_id}] router error: {e}")
-        raise HTTPException(status_code=502, detail=f"Router error: {str(e)}")
+        logger.exception(f"[{request_id}] worker failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Worker error: {e}")
 
     latency = time.time() - start
-    GATEWAY_LATENCY.labels(endpoint=endpoint).observe(latency)
-
-    # 3. Parse Router OpenAI-style response
-    output_text = ""
-    # #region agent log
-    debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:196","message":"Before parsing response","data":{"data_keys":list(data.keys()) if isinstance(data,dict) else "not_dict"},"timestamp":int(time.time()*1000)}
-    logger.info(f"[DEBUG] {json.dumps(debug_data)}")
-    try:
-        with open('/tmp/debug.log', 'a') as f:
-            f.write(json.dumps(debug_data)+'\n')
-    except Exception as e:
-        logger.warning(f"[DEBUG] Failed to write log file: {e}")
-    # #endregion
-    if "choices" in data and data["choices"]:
-        choice = data["choices"][0]
-        if "message" in choice and "content" in choice["message"]:
-            output_text = choice["message"]["content"]
-            # #region agent log
-            debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:201","message":"Extracted output text","data":{"output_length":len(output_text)},"timestamp":int(time.time()*1000)}
-            logger.info(f"[DEBUG] {json.dumps(debug_data)}")
-            try:
-                with open('/tmp/debug.log', 'a') as f:
-                    f.write(json.dumps(debug_data)+'\n')
-            except Exception as e:
-                logger.warning(f"[DEBUG] Failed to write log file: {e}")
-            # #endregion
-
-    if not output_text:
-        # #region agent log
-        debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:207","message":"Empty response from router","data":{"data":str(data)[:500]},"timestamp":int(time.time()*1000)}
-        logger.error(f"[DEBUG] {json.dumps(debug_data)}")
-        try:
-            with open('/tmp/debug.log', 'a') as f:
-                f.write(json.dumps(debug_data)+'\n')
-        except Exception as e:
-            logger.warning(f"[DEBUG] Failed to write log file: {e}")
-        # #endregion
-        raise HTTPException(status_code=502, detail="Empty response from router")
-
+    API_LATENCY.labels(endpoint=endpoint).observe(latency)
     logger.info(f"[{request_id}] done in {latency:.3f}s")
-    # #region agent log
-    debug_data = {"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"gateway.py:220","message":"Gateway returning success","data":{"latency":latency,"output_length":len(output_text)},"timestamp":int(time.time()*1000)}
-    logger.info(f"[DEBUG] {json.dumps(debug_data)}")
-    try:
-        with open('/tmp/debug.log', 'a') as f:
-            f.write(json.dumps(debug_data)+'\n')
-    except Exception as e:
-        logger.warning(f"[DEBUG] Failed to write log file: {e}")
-    # #endregion
 
-    # 4. Return OpenAI-compatible response
-    return ChatCompletionResponse(
-        id=data.get("id", f"chatcmpl-{int(time.time() * 1000)}"),
-        created=int(time.time()),
-        model=req.model,
-        choices=[
-            ChatCompletionChoice(
-                index=0,
-                message=ChatMessage(role="assistant", content=output_text),
-                finish_reason="stop",
-            )
-        ],
-    )
+    # vLLM 已经返回 OpenAI 兼容格式,直接透传(避免再解包/重包)
+    return data
