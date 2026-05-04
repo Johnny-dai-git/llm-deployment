@@ -21,17 +21,29 @@ spec:
         volumeMounts:
         - name: html
           mountPath: /usr/share/nginx/html
-        readinessProbe:               # ✅ 强烈建议
+        # ========= Probes =========
+        # nginx + 静态 ConfigMap,启动很快(<1s)
+        # startupProbe 主要防御 ConfigMap 挂载偶尔慢的边缘情况
+        startupProbe:
           httpGet:
             path: /
             port: 80
-          initialDelaySeconds: 2
+          periodSeconds: 3
+          timeoutSeconds: 3
+          failureThreshold: 5          # ~15s 启动预算
+
+        readinessProbe:                # 决定是否接流量
+          httpGet:
+            path: /
+            port: 80
           periodSeconds: 5
-        livenessProbe:                # nginx 卡死时让 K8s 重启它
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        livenessProbe:                 # nginx 卡死时让 K8s 重启它
           httpGet:
             path: /
             port: 80
-          initialDelaySeconds: 5
           periodSeconds: 30
           timeoutSeconds: 3
           failureThreshold: 3

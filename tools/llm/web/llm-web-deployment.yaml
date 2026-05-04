@@ -86,20 +86,34 @@ spec:
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
               readOnly: true
+          # ========= Probes =========
+          # nginx 启动 < 500ms,startupProbe 大部分时候是冗余的;
+          # 加它是为了:
+          #   1) 跟其他组件配置形状一致
+          #   2) 防御 ConfigMap 挂载偶尔慢的边缘情况
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 3
+            timeoutSeconds: 3
+            failureThreshold: 5          # ~15s 启动预算
+
           readinessProbe:
             httpGet:
               path: /
               port: 8080
-            initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
+            failureThreshold: 3
+
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 3
+            failureThreshold: 3
           resources:
             requests:
               cpu: "50m"
