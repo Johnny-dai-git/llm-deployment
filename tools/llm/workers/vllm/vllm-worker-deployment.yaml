@@ -102,14 +102,13 @@ spec:
           # 简历亮点:KV cache quantization
           - --kv-cache-dtype=fp8
 
-          # ========= Speculative Decoding =========
-          # 用原来的 0.5B 模型当 draft, 1.5B AWQ 当 target.
-          # 流程:draft 一次生成 N 个 token -> target 并行验证 -> 接受/回滚
-          # 对单流(并发低) latency 和 throughput 都有 1.5-2x 提升.
-          # 简历亮点:speculative decoding with draft+target model setup
-          # 注意:vLLM 0.11 spec dec 与 prefix caching/chunked prefill
-          # 部分场景不兼容,如果启动报错把这一行注释掉.
-          - --speculative-config={"model":"/model/qwen2.5-0.5b","num_speculative_tokens":5}
+          # ========= Speculative Decoding (ngram) =========
+          # vLLM 0.11 移除了 draft-model 模式的 spec dec(NotImplementedError),
+          # 改用 ngram:从 prompt 自身找重复 n-gram 当 draft,零成本无需额外模型.
+          # 对长 prompt + 含重复内容(代码/JSON/格式化输出)的场景加速最明显,
+          # 对短开放对话加速有限.
+          # 简历可写:speculative decoding via prompt-lookup (ngram)
+          - '--speculative-config={"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}'
 
           # ========= 稳定性参数(消费级 GPU) =========
           # 关掉 CUDA graph + cascade attention,牺牲点性能换稳定
