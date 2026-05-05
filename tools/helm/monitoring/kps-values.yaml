@@ -66,9 +66,14 @@ grafana:
       root_url: "%(protocol)s://%(domain)s/grafana/"
       serve_from_sub_path: true
     auth:
+      # Anonymous Admin:任何人不登录直接进就是 Admin 权限
       anonymous:
         enabled: true
         org_role: Admin
+      # 隐藏登录表单 + 退出菜单 → 彻底无登录页
+      # 注意:此项严格禁止用于公网!仅适合本地/内网 demo
+      disable_login_form: true
+      disable_signout_menu: true
       basic:
         enabled: false
 
