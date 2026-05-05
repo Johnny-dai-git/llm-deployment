@@ -1,0 +1,64 @@
+=== short_short (max_tokens=50) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":1.26,"avg_latency_ms":468,"min_latency_ms":222,"max_latency_ms":659,"total_completion_tokens":512,"avg_completion_tokens_per_req":32.0,"output_tok_per_sec":406.3,"total_tok_per_sec":787.3,"rps":12.70}
+
+=== short_long (max_tokens=300) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":1.22,"avg_latency_ms":445,"min_latency_ms":210,"max_latency_ms":632,"total_completion_tokens":490,"avg_completion_tokens_per_req":30.6,"output_tok_per_sec":403.3,"total_tok_per_sec":798.4,"rps":13.17}
+
+=== long_short (max_tokens=50) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":1.38,"avg_latency_ms":672,"min_latency_ms":637,"max_latency_ms":697,"total_completion_tokens":800,"avg_completion_tokens_per_req":50.0,"output_tok_per_sec":580.1,"total_tok_per_sec":1380.7,"rps":11.60}
+
+=== long_long (max_tokens=300) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":6.45,"avg_latency_ms":3209,"min_latency_ms":3061,"max_latency_ms":3350,"total_completion_tokens":4800,"avg_completion_tokens_per_req":300.0,"output_tok_per_sec":744.0,"total_tok_per_sec":915.1,"rps":2.48}
+
+=== short_short (max_tokens=50) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":0.90,"avg_latency_ms":320,"min_latency_ms":191,"max_latency_ms":475,"total_completion_tokens":398,"avg_completion_tokens_per_req":24.9,"output_tok_per_sec":441.2,"total_tok_per_sec":973.4,"rps":17.74}
+
+=== short_long (max_tokens=300) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":1.02,"avg_latency_ms":392,"min_latency_ms":183,"max_latency_ms":537,"total_completion_tokens":514,"avg_completion_tokens_per_req":32.1,"output_tok_per_sec":502.4,"total_tok_per_sec":971.7,"rps":15.64}
+
+=== long_short (max_tokens=50) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":1.18,"avg_latency_ms":575,"min_latency_ms":544,"max_latency_ms":597,"total_completion_tokens":800,"avg_completion_tokens_per_req":50.0,"output_tok_per_sec":676.8,"total_tok_per_sec":1610.8,"rps":13.54}
+
+=== long_long (max_tokens=300) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":6.16,"avg_latency_ms":3065,"min_latency_ms":2999,"max_latency_ms":3123,"total_completion_tokens":4800,"avg_completion_tokens_per_req":300.0,"output_tok_per_sec":779.1,"total_tok_per_sec":958.3,"rps":2.60}
+
+=== short_short (max_tokens=50) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":1.03,"avg_latency_ms":346,"min_latency_ms":200,"max_latency_ms":536,"total_completion_tokens":395,"avg_completion_tokens_per_req":24.7,"output_tok_per_sec":384.2,"total_tok_per_sec":851.2,"rps":15.56}
+
+=== short_long (max_tokens=300) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":1.23,"avg_latency_ms":442,"min_latency_ms":193,"max_latency_ms":644,"total_completion_tokens":553,"avg_completion_tokens_per_req":34.6,"output_tok_per_sec":450.3,"total_tok_per_sec":841.2,"rps":13.03}
+
+=== long_short (max_tokens=50) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":1.22,"avg_latency_ms":595,"min_latency_ms":576,"max_latency_ms":603,"total_completion_tokens":800,"avg_completion_tokens_per_req":50.0,"output_tok_per_sec":654.1,"total_tok_per_sec":1556.8,"rps":13.08}
+
+=== long_long (max_tokens=300) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":6.24,"avg_latency_ms":3104,"min_latency_ms":3041,"max_latency_ms":3156,"total_completion_tokens":4800,"avg_completion_tokens_per_req":300.0,"output_tok_per_sec":768.7,"total_tok_per_sec":945.5,"rps":2.56}
+
+=== short_short (max_tokens=50) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":1.07,"avg_latency_ms":388,"min_latency_ms":197,"max_latency_ms":543,"total_completion_tokens":484,"avg_completion_tokens_per_req":30.2,"output_tok_per_sec":452.8,"total_tok_per_sec":901.8,"rps":14.97}
+
+=== short_long (max_tokens=300) ===
+prompt: hi
+stats: {"requests":16,"concurrency":8,"wall_sec":1.31,"avg_latency_ms":391,"min_latency_ms":189,"max_latency_ms":681,"total_completion_tokens":511,"avg_completion_tokens_per_req":31.9,"output_tok_per_sec":389.5,"total_tok_per_sec":755.3,"rps":12.20}
+
+=== long_short (max_tokens=50) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":1.18,"avg_latency_ms":574,"min_latency_ms":564,"max_latency_ms":579,"total_completion_tokens":800,"avg_completion_tokens_per_req":50.0,"output_tok_per_sec":678.0,"total_tok_per_sec":1613.6,"rps":13.56}
+
+=== long_long (max_tokens=300) ===
+prompt: 请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。
+stats: {"requests":16,"concurrency":8,"wall_sec":6.00,"avg_latency_ms":2983,"min_latency_ms":2964,"max_latency_ms":2995,"total_completion_tokens":4800,"avg_completion_tokens_per_req":300.0,"output_tok_per_sec":800.3,"total_tok_per_sec":984.3,"rps":2.67}
+

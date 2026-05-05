@@ -1,0 +1,59 @@
+{
+  "test": "03_throughput",
+  "concurrency": 8,
+  "requests_per_scenario": 16,
+  "scenarios": {
+    "short_short": {
+      "requests": 16,
+      "concurrency": 8,
+      "wall_sec": 1.07,
+      "avg_latency_ms": 388,
+      "min_latency_ms": 197,
+      "max_latency_ms": 543,
+      "total_completion_tokens": 484,
+      "avg_completion_tokens_per_req": 30.2,
+      "output_tok_per_sec": 452.8,
+      "total_tok_per_sec": 901.8,
+      "rps": 14.97
+    },
+    "short_long": {
+      "requests": 16,
+      "concurrency": 8,
+      "wall_sec": 1.31,
+      "avg_latency_ms": 391,
+      "min_latency_ms": 189,
+      "max_latency_ms": 681,
+      "total_completion_tokens": 511,
+      "avg_completion_tokens_per_req": 31.9,
+      "output_tok_per_sec": 389.5,
+      "total_tok_per_sec": 755.3,
+      "rps": 12.20
+    },
+    "long_short": {
+      "requests": 16,
+      "concurrency": 8,
+      "wall_sec": 1.18,
+      "avg_latency_ms": 574,
+      "min_latency_ms": 564,
+      "max_latency_ms": 579,
+      "total_completion_tokens": 800,
+      "avg_completion_tokens_per_req": 50.0,
+      "output_tok_per_sec": 678.0,
+      "total_tok_per_sec": 1613.6,
+      "rps": 13.56
+    },
+    "long_long": {
+      "requests": 16,
+      "concurrency": 8,
+      "wall_sec": 6.00,
+      "avg_latency_ms": 2983,
+      "min_latency_ms": 2964,
+      "max_latency_ms": 2995,
+      "total_completion_tokens": 4800,
+      "avg_completion_tokens_per_req": 300.0,
+      "output_tok_per_sec": 800.3,
+      "total_tok_per_sec": 984.3,
+      "rps": 2.67
+    }
+  }
+}

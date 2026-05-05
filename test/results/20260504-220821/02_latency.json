@@ -1,0 +1,38 @@
+{
+  "test": "02_latency",
+  "requests_per_level": 30,
+  "prompt": "解释一下什么是机器学习,简短一些",
+  "max_tokens": 80,
+  "results": {
+    "c1": {
+      "count": 30,
+      "min_ms": 464,
+      "max_ms": 718,
+      "mean_ms": 633.0,
+      "p50_ms": 647,
+      "p90_ms": 695,
+      "p95_ms": 697,
+      "p99_ms": 704
+    },
+    "c4": {
+      "count": 30,
+      "min_ms": 526,
+      "max_ms": 765,
+      "mean_ms": 697.3,
+      "p50_ms": 718,
+      "p90_ms": 750,
+      "p95_ms": 757,
+      "p99_ms": 759
+    },
+    "c8": {
+      "count": 30,
+      "min_ms": 671,
+      "max_ms": 868,
+      "mean_ms": 810.6,
+      "p50_ms": 823,
+      "p90_ms": 865,
+      "p95_ms": 867,
+      "p99_ms": 867
+    }
+  }
+}

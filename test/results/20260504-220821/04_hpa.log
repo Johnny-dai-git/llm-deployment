@@ -1,0 +1,7 @@
+=== HPA test summary ===
+initial_replicas: 1
+peak_replicas:    1
+final_replicas:   1
+hpa_triggered:    false
+
+(timeline 在 /home/johnny/Desktop/projects/llm-server/llm-deployment/test/results/20260504-220821/04_hpa_timeline.txt,每 5 秒一行,可用 column -t -s, 看)

@@ -1,0 +1,13 @@
+{
+  "test": "05_stability",
+  "duration_sec": 300,
+  "concurrency": 4,
+  "ok_requests": 1130,
+  "err_requests": 0,
+  "total_requests": 1130,
+  "error_rate_percent": 0.0000,
+  "rps": 3.77,
+  "vllm_restart_delta": 0,
+  "passed": true,
+  "snapshots_file": "/home/johnny/Desktop/projects/llm-server/llm-deployment/test/results/20260504-220821/05_stability_snapshots.txt"
+}

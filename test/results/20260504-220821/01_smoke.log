@@ -1,0 +1,97 @@
+=== models endpoint ===
+$ curl -fsS --max-time 5 'http://localhost/api/v1/models'
+{"object":"list","data":[{"id":"qwen2.5-0.5b","object":"model","owned_by":"local"}]}
+RESULT: PASS
+
+=== single completion (non-streaming) ===
+$ curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"1+1=?"}],"max_tokens":50}' 'http://localhost/api/v1/chat/completions'
+{"id":"chatcmpl-605a5c314a324f3d8c045e4b8fcf34e4","object":"chat.completion","created":1777946901,"model":"qwen2.5-0.5b","choices":[{"index":0,"message":{"role":"assistant","content":"1+1=2","refusal":null,"annotations":null,"audio":null,"function_call":null,"tool_calls":[],"reasoning_content":null},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null}],"service_tier":null,"system_fingerprint":null,"usage":{"prompt_tokens":33,"total_tokens":39,"completion_tokens":6,"prompt_tokens_details":null},"prompt_logprobs":null,"prompt_token_ids":null,"kv_transfer_params":null}
+RESULT: PASS
+
+=== streaming SSE ===
+$ curl -fsS -N --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"hi"}],"max_tokens":30,"stream":true}' 'http://localhost/api/v1/chat/completions'
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" How"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" can"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" I"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" assist"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" you"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" today"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"?"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" Please"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" let"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" me"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" know"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" if"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" there"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"'s"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" anything"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" specific"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" or"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" if"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" you"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" have"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" any"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" questions"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" that"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" I"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" can"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" help"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" with"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-6a0a6f68d1264c868ca9ccca97b7ff95","object":"chat.completion.chunk","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null}]}
+
+data: [DONE]
+RESULT: PASS
+
+=== multi-turn conversation ===
+$ curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"我叫小明"},{"role":"assistant","content":"你好,小明"},{"role":"user","content":"我叫什么?"}],"max_tokens":50}' 'http://localhost/api/v1/chat/completions'
+{"id":"chatcmpl-74f0c849308d45a98dadb89b63d5ae28","object":"chat.completion","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"message":{"role":"assistant","content":"你是小明。有什么我可以帮助你的吗？","refusal":null,"annotations":null,"audio":null,"function_call":null,"tool_calls":[],"reasoning_content":null},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null}],"service_tier":null,"system_fingerprint":null,"usage":{"prompt_tokens":51,"total_tokens":62,"completion_tokens":11,"prompt_tokens_details":null},"prompt_logprobs":null,"prompt_token_ids":null,"kv_transfer_params":null}
+RESULT: PASS
+
+=== max_tokens enforcement ===
+$ curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"写 1000 字的小说"}],"max_tokens":10}' 'http://localhost/api/v1/chat/completions'
+{"id":"chatcmpl-0dca41b65a8d4d0d9f1d525208311358","object":"chat.completion","created":1777946902,"model":"qwen2.5-0.5b","choices":[{"index":0,"message":{"role":"assistant","content":"我无法创作小说，因为我是由阿里云","refusal":null,"annotations":null,"audio":null,"function_call":null,"tool_calls":[],"reasoning_content":null},"logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null}],"service_tier":null,"system_fingerprint":null,"usage":{"prompt_tokens":38,"total_tokens":48,"completion_tokens":10,"prompt_tokens_details":null},"prompt_logprobs":null,"prompt_token_ids":null,"kv_transfer_params":null}
+RESULT: PASS
+
+=== error handling: unknown model returns 4xx ===
+$ curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Content-Type: application/json' -X POST -d '{"model":"does-not-exist-99","messages":[{"role":"user","content":"x"}]}' 'http://localhost/api/v1/chat/completions'
+502
+RESULT: FAIL
+
+=== error handling: empty messages returns 4xx ===
+$ curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[]}' 'http://localhost/api/v1/chat/completions'
+502
+RESULT: FAIL
+
