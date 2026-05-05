@@ -40,6 +40,25 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: llm
+  # ============ HPA 与 ArgoCD 共存 ============
+  # vllm-worker / llm-api 都有 HPA。HPA 会动态修改 Deployment.spec.replicas,
+  # 但 ArgoCD selfHeal 会看到 live state 跟 git 的 replicas: 1 有差异,
+  # 立刻把它改回 1 → 跟 HPA 形成拉锯,HPA 永远扩不上去。
+  # 标准做法是让 ArgoCD 忽略 replicas 字段,把这个字段完全交给 HPA。
+  # 见: https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/#system-level-configuration
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: vllm-worker
+      namespace: llm
+      jsonPointers:
+        - /spec/replicas
+    - group: apps
+      kind: Deployment
+      name: llm-api
+      namespace: llm
+      jsonPointers:
+        - /spec/replicas
   syncPolicy:
     automated:
       prune: true
