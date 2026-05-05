@@ -39,7 +39,7 @@ echo "===== Lambda A100 节点初始化 (all_install.sh) ====="
 # kubelet 启动会拒绝有 swap 的节点。Lambda base image 一般 swap 已经关,
 # 但 idempotent 跑一次确保。
 ##############################################
-echo "[1/5] 禁用 swap"
+echo "[1/6] 禁用 swap"
 if [ "$(swapon --show | wc -l)" -gt 0 ]; then
     sudo swapoff -a
     sudo sed -i '/ swap / s/^/#/' /etc/fstab
@@ -49,12 +49,31 @@ else
 fi
 
 ##############################################
+# 1.5. 通用工具 (jq, bc) — test 套件依赖
+# ----------------------------------------------------------------
+# Lambda base image 不带 jq / bc。test/run_lambda.sh + 故障诊断
+# 命令都需要,先一次性装好。curl / awk / git 通常已经在了。
+##############################################
+echo "[2/6] 安装通用工具 (jq, bc)"
+NEED_INSTALL=()
+command -v jq >/dev/null 2>&1 || NEED_INSTALL+=(jq)
+command -v bc >/dev/null 2>&1 || NEED_INSTALL+=(bc)
+
+if [ ${#NEED_INSTALL[@]} -gt 0 ]; then
+    sudo apt-get update -y
+    sudo apt-get install -y "${NEED_INSTALL[@]}"
+    echo "  ✓ 已安装: ${NEED_INSTALL[*]}"
+else
+    echo "  ➡ jq / bc 已存在,跳过"
+fi
+
+##############################################
 # 2. 安装 Kubernetes 三件套 (kubelet / kubeadm / kubectl)
 # ----------------------------------------------------------------
 # Lambda 默认不装这些。版本锁 v1.30(跟 laptop 分支一致,
 # manifest 都是按 v1.30 + autoscaling/v2 写的)。
 ##############################################
-echo "[2/5] 安装 kubelet / kubeadm / kubectl (v1.30)"
+echo "[3/6] 安装 kubelet / kubeadm / kubectl (v1.30)"
 if ! command -v kubeadm >/dev/null 2>&1; then
     sudo mkdir -p /etc/apt/keyrings
 
@@ -87,7 +106,7 @@ fi
 # launch.sh Phase 2.5 (因为 nvidia-ctk runtime configure 需要在
 # 已经有 SystemdCgroup=true 的 config 上做增量修改)。
 ##############################################
-echo "[3/5] 校准 containerd cgroup driver = systemd"
+echo "[4/6] 校准 containerd cgroup driver = systemd"
 if ! command -v containerd >/dev/null 2>&1; then
     echo "  ⚠️  containerd 未安装 —— Lambda image 应该自带,请检查系统"
     exit 1
@@ -112,7 +131,7 @@ fi
 # kube-prometheus-stack / argocd-image-updater / argo-cd 都是 helm chart
 # 装的,所以 helm 必须有。
 ##############################################
-echo "[4/5] 安装 Helm"
+echo "[5/6] 安装 Helm"
 if ! command -v helm >/dev/null 2>&1; then
     curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     echo "  ✓ Helm 已安装: $(helm version --short)"
@@ -136,7 +155,7 @@ fi
 # ⚠️ 前置条件:GPU 上不能有 CUDA 进程在跑,否则 -mig 1 会失败。
 # Lambda 裸机刚开机时一般没问题。
 ##############################################
-echo "[5/5] 自动配置 MIG (7× 1g.5gb)"
+echo "[6/6] 自动配置 MIG (7× 1g.5gb)"
 
 if ! command -v nvidia-smi >/dev/null 2>&1; then
     echo "  ⚠️  nvidia-smi 不存在 —— Lambda image 应该自带 driver,请检查"
