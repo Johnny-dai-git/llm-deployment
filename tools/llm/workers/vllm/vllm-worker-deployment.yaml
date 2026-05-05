@@ -70,48 +70,24 @@ spec:
           - vllm.entrypoints.openai.api_server
 
         args:
-          # ========= 模型(AWQ 量化版) =========
-          # Qwen2.5-1.5B-Instruct-AWQ 比原来的 0.5B fp16 大 3 倍,但
-          # AWQ 4-bit 量化后显存占用差不多(~1.2 GB 权重 vs 原 1 GB).
-          # 简历上能讲"在同样硬件跑更大模型"的故事.
-          # 需要先下载模型,见 script/laptop/download-model.sh:
-          #   MODEL_NAME=Qwen/Qwen2.5-1.5B-Instruct-AWQ \
-          #   MODEL_LOCAL_NAME=qwen2.5-1.5b-awq \
-          #   bash script/laptop/download-model.sh
-          - --model=/model/qwen2.5-1.5b-awq
-          - --served-model-name=qwen2.5-1.5b
-          - --quantization=awq
+          # ========= 模型 =========
+          - --model=/model/qwen2.5-0.5b
+          - --served-model-name=qwen2.5-0.5b
 
           # ========= 服务监听 =========
           - --host=0.0.0.0
           - --port=8002
 
-          # ========= 类型 / 上下文 =========
+          # ========= 稳定参数（已本地验证） =========
           - --dtype=float16
-          # 0.5(原 0.4):AWQ 模型 + draft model + fp8 KV cache 一起需要
-          # 多一点空间.time-slicing 上 2 个 pod 一起 = 100% 用满,边缘但 OK.
-          # 如果 OOM 把 HPA maxReplicas 暂时调到 1 单独跑.
-          - --gpu-memory-utilization=0.5
+          # 0.4:6 GB GPU 切 2 份后,每份 ~2.4 GB,够装 0.5B 模型 + KV cache
+          # 上 Lambda 单 Pod 独占 GPU 时改回 0.8 或更高
+          - --gpu-memory-utilization=0.4
           - --max-model-len=2048
           - --max-num-seqs=8
           - --max-num-batched-tokens=2048
 
-          # ========= KV cache 量化:fp8 e4m3 =========
-          # 把 KV cache 从 fp16 压到 fp8,显存占用减半,可以跑更长 context
-          # 或更大 batch.RTX 4050 (Ada, compute 8.9) 原生支持 fp8 e4m3.
-          # 简历亮点:KV cache quantization
-          - --kv-cache-dtype=fp8
-
-          # ========= Speculative Decoding (ngram) =========
-          # vLLM 0.11 移除了 draft-model 模式的 spec dec(NotImplementedError),
-          # 改用 ngram:从 prompt 自身找重复 n-gram 当 draft,零成本无需额外模型.
-          # 对长 prompt + 含重复内容(代码/JSON/格式化输出)的场景加速最明显,
-          # 对短开放对话加速有限.
-          # 简历可写:speculative decoding via prompt-lookup (ngram)
-          - '--speculative-config={"method":"ngram","num_speculative_tokens":5,"prompt_lookup_max":4}'
-
-          # ========= 稳定性参数(消费级 GPU) =========
-          # 关掉 CUDA graph + cascade attention,牺牲点性能换稳定
+          # ========= 关键：避免 Flash / CUDA Graph 崩溃 =========
           - --disable-cascade-attn
           - --enforce-eager
 
