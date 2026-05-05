@@ -1,0 +1,27 @@
+# Test run outputs — every run produces a new timestamped directory,
+# don't pollute git history with these. Earlier baseline directories
+# already in the tree (e.g. test/results/20260504-220821/) stay tracked
+# because they were committed before this rule existed.
+test/results/*/
+!test/results/.gitkeep
+
+# Local secrets, never commit
+.env
+.env.*
+*.token
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Python / venv noise (in case future script work creates these)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local Docker layer cache, kubeconfigs, etc
+*.kubeconfig
+.kube/
