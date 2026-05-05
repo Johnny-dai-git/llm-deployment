@@ -393,9 +393,24 @@ helm upgrade --install dcgm nvidia/dcgm-exporter \
   || echo "⚠️  DCGM helm wait timeout,继续(DaemonSet 在追)"
 
 # ================================================================
-# DCGM Grafana Dashboard 自动 import
+# Grafana Dashboards 自动 import
+# ----------------------------------------------------------------
+# 用 grafana-sc-dashboard sidecar 套路:任何带 `grafana_dashboard=1`
+# 标签的 ConfigMap 会被 sidecar 自动转成 dashboard 写到
+# /tmp/dashboards/。装两份:
+#
+#   1. 上游 NVIDIA DCGM Exporter Dashboard (id 12239)
+#      —— 通用整卡指标视图。在 MIG 环境下大部分 panel 显示
+#      "GPU 0" 7 行(因为 legend 只用 {{gpu}} label),所以仅作辅助。
+#
+#   2. 自定义 "Lambda A100 / MIG / vLLM" dashboard
+#      —— 专为 GCP_BRANCH 设计:per-MIG 计算 / Tensor Core /
+#      VRAM,以及 MIG↔Pod 映射表。Legend 用 {{GPU_I_ID}} +
+#      {{pod}},7 个 MIG 实例清晰可分辨。
 # ================================================================
-echo "===== Installing NVIDIA DCGM Grafana dashboard ====="
+echo "===== Installing Grafana dashboards (DCGM upstream + custom MIG) ====="
+
+# ---- Dashboard 1: 上游 DCGM (12239) ----
 DCGM_DASHBOARD=/tmp/dcgm-dashboard.json
 if curl -sfL "https://grafana.com/api/dashboards/12239/revisions/latest/download" -o "${DCGM_DASHBOARD}"; then
     DCGM_SIZE=$(wc -c < "${DCGM_DASHBOARD}" 2>/dev/null || echo 0)
@@ -406,15 +421,34 @@ if curl -sfL "https://grafana.com/api/dashboards/12239/revisions/latest/download
             --dry-run=client -o yaml \
             | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
             | kubectl apply -f -
-        sleep 30
-        GRAFANA_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-        [ -n "${GRAFANA_POD}" ] && kubectl exec -n monitoring "${GRAFANA_POD}" -c grafana -- killall -SIGHUP grafana 2>/dev/null || true
-        echo "✓ DCGM dashboard 已 import"
+        echo "    ✓ NVIDIA DCGM (12239) ConfigMap applied"
     else
-        echo "⚠️  DCGM dashboard 下载内容异常,跳过"
+        echo "    ⚠️  DCGM dashboard 下载内容异常,跳过"
     fi
 else
-    echo "⚠️  无法从 grafana.com 下载 DCGM dashboard"
+    echo "    ⚠️  无法从 grafana.com 下载 DCGM dashboard,跳过"
+fi
+
+# ---- Dashboard 2: 自定义 Lambda A100 / MIG / vLLM ----
+MIG_DASHBOARD="${CONTROL_DIR}/helm/monitoring/dashboards/mig-vllm-dashboard.json"
+if [ -f "${MIG_DASHBOARD}" ]; then
+    kubectl -n monitoring create configmap mig-vllm-dashboard \
+        --from-file=mig-vllm-dashboard.json="${MIG_DASHBOARD}" \
+        --dry-run=client -o yaml \
+        | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
+        | kubectl apply -f -
+    echo "    ✓ Lambda A100 / MIG / vLLM ConfigMap applied"
+else
+    echo "    ⚠️  自定义 MIG dashboard 找不到 (${MIG_DASHBOARD}),跳过"
+fi
+
+# ---- 让 sidecar 把新 ConfigMap 转成 dashboard ----
+sleep 30
+GRAFANA_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+if [ -n "${GRAFANA_POD}" ]; then
+    # SIGHUP 让 grafana 重新读 provisioning,sidecar 写文件 + grafana reload = 立刻可见
+    kubectl exec -n monitoring "${GRAFANA_POD}" -c grafana -- killall -SIGHUP grafana 2>/dev/null || true
+    echo "    ✓ Grafana SIGHUP'd —— 在左侧 Dashboards 菜单应能看到两个新 dashboard"
 fi
 
 # ================================================================
