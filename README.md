@@ -329,7 +329,7 @@ cd test
 
 `/v1/models` · single completion · SSE streaming · multi-turn · `max_tokens` enforcement · unknown-model 4xx · empty-messages 4xx — all green.
 
-### 02 — Latency (固定 prompt, prefix-cache hit; 30 req per level)
+### 02 — Latency (fixed prompt, prefix-cache hit; 30 req per level)
 
 | Concurrency | Mean | P50 | P90 | P95 | P99 |
 |---|---|---|---|---|---|
@@ -339,7 +339,7 @@ cd test
 
 Concurrency 8 P50 only **23% higher** than single-stream — vLLM continuous batching works as advertised.
 
-### 03 — Throughput (固定 prompt, prefix-cache hit; 16 req per scenario, concurrency 8)
+### 03 — Throughput (fixed prompt, prefix-cache hit; 16 req per scenario, concurrency 8)
 
 | Scenario | Output tok/s | Wall | Avg latency |
 |---|---|---|---|
