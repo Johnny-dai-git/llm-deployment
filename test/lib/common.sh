@@ -9,7 +9,38 @@
 # ================================================================
 
 # 默认配置(可被环境变量覆盖)
-TEST_ENDPOINT="${TEST_ENDPOINT:-http://localhost/api/v1/chat/completions}"
+# ----------------------------------------------------------------
+# 如果没显式设 TEST_ENDPOINT,自动判断:
+#   1. 在 Lambda 上 (能 curl 出 public IP)        → 用 public IP
+#   2. localhost 能连上 ingress                    → 用 localhost
+#   3. 都不行                                      → 报错
+# ----------------------------------------------------------------
+_detect_endpoint() {
+    # 1. user 显式给了就用
+    if [ -n "${TEST_ENDPOINT:-}" ]; then
+        echo "${TEST_ENDPOINT}"
+        return
+    fi
+
+    # 2. 试 localhost (笔记本/同机)
+    if curl -fsS --max-time 2 http://localhost/api/v1/models >/dev/null 2>&1; then
+        echo "http://localhost/api/v1/chat/completions"
+        return
+    fi
+
+    # 3. Lambda 模式:从 ifconfig.me 拿 public IP
+    local pub
+    pub=$(curl -fsS --max-time 5 ifconfig.me 2>/dev/null || true)
+    if [ -n "$pub" ] && curl -fsS --max-time 5 "http://${pub}/api/v1/models" >/dev/null 2>&1; then
+        echo "http://${pub}/api/v1/chat/completions"
+        return
+    fi
+
+    # 4. 兜底:打回 localhost,让 check_endpoint 报具体错
+    echo "http://localhost/api/v1/chat/completions"
+}
+
+TEST_ENDPOINT="$(_detect_endpoint)"
 TEST_MODEL="${TEST_MODEL:-qwen2.5-0.5b}"
 
 # 颜色
@@ -130,4 +161,38 @@ init_results_dir() {
         export RESULTS_DIR
     fi
     log_info "Results: ${RESULTS_DIR}"
+}
+
+# ================================================================
+# MIG-aware helpers
+# ----------------------------------------------------------------
+# Query Prometheus for a single value. Used by 07_mig_isolation.sh
+# to count how many MIG instances are actually doing GPU work.
+# Prometheus is exposed via ingress at /prometheus.
+# ================================================================
+prometheus_query() {
+    local query="$1"
+    local prom_url
+    # Strip /api/v1/chat/completions, append /prometheus/api/v1/query
+    prom_url="${TEST_ENDPOINT%/api/v1/chat/completions}/prometheus/api/v1/query"
+    curl -fsS -G --max-time 10 \
+        --data-urlencode "query=${query}" \
+        "${prom_url}" 2>/dev/null
+}
+
+# Count how many MIG instances had non-zero compute activity over the last $window.
+# Returns single integer or "0" on error.
+count_active_mig_instances() {
+    local window="${1:-1m}"
+    prometheus_query "count(max_over_time(DCGM_FI_PROF_GR_ENGINE_ACTIVE[${window}]) > 0.05)" \
+        | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null \
+        || echo "0"
+}
+
+# List MIG instances currently bound to pods.
+# Returns lines like "MIG-13 vllm-worker-xxx" (one per attached MIG).
+list_mig_pod_bindings() {
+    prometheus_query 'DCGM_FI_DEV_FB_USED{pod!=""}' 2>/dev/null \
+        | jq -r '.data.result[]? | "MIG-\(.metric.GPU_I_ID) \(.metric.pod)"' 2>/dev/null \
+        | sort -u
 }
