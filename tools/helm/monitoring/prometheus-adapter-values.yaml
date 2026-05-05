@@ -9,9 +9,15 @@
 # 注意 service 名跟 Helm release 名相关:
 #   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
 #   → service 叫 monitoring-kube-prometheus-prometheus
+#
+# ⚠️ path 必须配合 prometheus 启动参数 --web.route-prefix=/prometheus 一起设。
+# 不加 path 时,adapter 会 GET /api/v1/series 拿到 404,然后 HPA 永远是 unknown,
+# 表现是 vllm-worker 副本怎么打负载都不扩容。kube-prometheus-stack 默认就用了
+# /prometheus 前缀(为了配合 ingress 反代),所以这里必须加。
 prometheus:
   url: http://monitoring-kube-prometheus-prometheus.monitoring.svc
   port: 9090
+  path: /prometheus
 
 # 让 prometheus-adapter Pod 调度到 system 节点
 nodeSelector:
