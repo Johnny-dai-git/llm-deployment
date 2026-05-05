@@ -50,10 +50,10 @@ spec:
           protocol: TCP
 
         resources:
-          # GCP A100 + MIG 1g.5gb sizing:
+          # Lambda Labs A100 (40 GB) + MIG 1g.5gb sizing:
           # - Each MIG 1g.5gb instance gives 5 GB VRAM and 1/7 of A100 SMs.
           # - Qwen2.5-0.5B fp16 weights ~1 GB; the rest of VRAM is KV cache.
-          # - Host RAM is plentiful on a2-highgpu-1g (85 GB total);
+          # - Host RAM on the Lambda 1×A100 instance is plentiful (216 GB);
           #   keeping the same 4Gi/8Gi values as the laptop branch keeps
           #   per-pod RAM small so HPA can pack 7 replicas on a single
           #   GPU node without RAM contention.
@@ -75,7 +75,7 @@ spec:
           # ========= Model =========
           # Same model as the laptop branch (Qwen2.5-0.5B fp16) so the
           # before/after comparison is purely about hardware:
-          # software time-slicing on RTX 4050 → hardware MIG on A100.
+          # laptop RTX 4050 + software time-slicing → Lambda Labs A100 + hardware MIG.
           - --model=/model/qwen2.5-0.5b
           - --served-model-name=qwen2.5-0.5b
 
@@ -140,18 +140,18 @@ spec:
           # liveness 失败 -> Pod 重启(慎用,会触发模型重新加载)
 
       volumes:
-      # GCP path: model weights live in a GCS bucket and are mounted
-      # via GCS Fuse CSI driver, so all GPU pods (across nodes) read
-      # from the same backing store without per-node downloads.
-      # See: https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/cloud-storage-fuse-csi-driver
+      # Lambda Labs (single-node bare A100): model weights live on the
+      # host filesystem at /mnt/models, mounted into every vllm-worker
+      # pod via hostPath. Because all 7 MIG-backed pods land on the
+      # same physical node, hostPath is sufficient — no need for a
+      # network-attached store.
       #
-      # The sidecar that mounts the bucket is configured via
-      # spec.template.metadata.annotations:
-      #   gke-gcsfuse/volumes: "true"
-      # and uses Workload Identity to authenticate (no SA keys).
+      # download-model.sh fetches Qwen2.5-0.5B-Instruct here once;
+      # subsequent pod restarts hit the local cache and start in seconds.
       #
-      # For now we keep the simple hostPath for local A100 testing;
-      # swap this block for the GCS Fuse PVC when running on GKE.
+      # If this branch is ever retargeted to a multi-node cloud cluster,
+      # swap this block for a network-attached PV (NFS / EBS / GCS Fuse
+      # / Azure Files) so all GPU nodes share one model copy.
       - name: model-volume
         hostPath:
           path: /mnt/models

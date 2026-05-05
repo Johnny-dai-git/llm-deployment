@@ -1,7 +1,7 @@
 # =====================================================================
 # NVIDIA Device Plugin + MIG (Multi-Instance GPU)
 # ---------------------------------------------------------------------
-# This is the GCP/A100 branch. Compared to the laptop branch:
+# Lambda Labs A100 deployment (GCP_BRANCH). Compared to the laptop branch:
 #
 #   laptop:    1× RTX 4050 (6 GB) split into 2 virtual GPUs via
 #              "time-slicing" (software-level scheduling, no isolation)
@@ -13,20 +13,19 @@
 #              time-slicing has, and lets HPA scale up to 7 replicas
 #              on a single physical GPU for high-availability serving.
 #
-# A100 40GB MIG profile choices (pick one when creating the node pool):
+# A100 40GB MIG profile choices:
 #   - 7× 1g.5gb        — 7 small instances (5 GB each, 1/7 SMs)  ← we use this
 #   - 4× 1g.5gb + 1× 2g.10gb (mixed)
 #   - 3× 2g.10gb       — 3 medium (10 GB each)
 #   - 2× 3g.20gb       — 2 large (20 GB each)
 #   - 1× 7g.40gb       — whole card
 #
-# The MIG layout itself is configured *outside* this manifest, via
-# `nvidia-smi mig` on each GPU node, or via the GPU Operator with a
-# ClusterPolicy. On GKE, enable MIG when creating the node pool:
-#   gcloud container node-pools create gpu-mig \
-#       --cluster=... \
-#       --machine-type=a2-highgpu-1g \
-#       --accelerator=type=nvidia-tesla-a100,count=1,gpu-partition-size=1g.5gb
+# On Lambda Labs the host comes with no MIG configured by default.
+# `script/lambda/all_install.sh` handles the full setup automatically:
+#   1. nvidia-smi -mig 1                      # enable MIG mode
+#   2. nvidia-smi mig -lgip                   # discover 1g.5gb profile id
+#   3. nvidia-smi mig -cgi <id>×7 -C          # create 7 GI + CI in one shot
+# Idempotent: skips if 7 instances already exist; cleans partials and rebuilds.
 # =====================================================================
 apiVersion: v1
 kind: ConfigMap

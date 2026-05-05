@@ -271,11 +271,11 @@ data:
           <div class="badge">Cluster Online</div>
           <h1>LLM Inference Platform</h1>
           <p class="subtitle">
-            End-to-end self-hosted LLM serving on Kubernetes (GKE + A100).
+            End-to-end self-hosted LLM serving on Kubernetes (Lambda Labs + A100).
             From bare cluster to OpenAI-compatible streaming API, with MIG-isolated GPU sharing, full observability, and GitOps.
           </p>
           <div class="stack">
-            <span class="tech">GKE</span>
+            <span class="tech">Lambda Labs</span>
             <span class="tech">A100 + MIG</span>
             <span class="tech">vLLM 0.11</span>
             <span class="tech">FlashAttention 2</span>

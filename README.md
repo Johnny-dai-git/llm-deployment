@@ -1,8 +1,8 @@
-# LLM Deployment — GCP / A100 branch
+# LLM Deployment — Lambda Labs / A100 branch
 
 Self-hosted, Kubernetes-based LLM inference platform. OpenAI-compatible API on top of vLLM, fully observable, with GitOps continuous deployment.
 
-> **This branch (`GCP_BRANCH`) targets GKE + A100 with MIG (Multi-Instance GPU).** For the laptop reference deployment (kubeadm + RTX 4050 + GPU time-slicing), see the [`telemetry`](https://github.com/Johnny-dai-git/llm-deployment/tree/telemetry) branch.
+> **This branch (`GCP_BRANCH`) targets a bare-metal Lambda Labs A100 instance with MIG (Multi-Instance GPU).** The branch is named `GCP_BRANCH` for historical reasons (initially scoped to GKE) — the actual deployment turned out to be Lambda Labs. For the laptop reference deployment (kubeadm + RTX 4050 + GPU time-slicing), see the [`telemetry`](https://github.com/Johnny-dai-git/llm-deployment/tree/telemetry) branch.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -41,7 +41,7 @@ Self-hosted, Kubernetes-based LLM inference platform. OpenAI-compatible API on t
 - **OpenAI-compatible API** with SSE streaming for chat completions
 - **GPU inference** via vLLM (currently `Qwen2.5-0.5B-Instruct` fp16)
 - **GitOps deployment** via ArgoCD watching this branch (`GCP_BRANCH`)
-- **Auto image updates** via ArgoCD Image Updater watching GHCR / Artifact Registry
+- **Auto image updates** via ArgoCD Image Updater watching GHCR
 - **Full observability**: Prometheus + Grafana + DCGM (GPU metrics) + ServiceMonitors for the business services
 - **Autoscaling**: HPA on `llm-api` (CPU) and `vllm-worker` (vLLM queue depth via prometheus-adapter), 1↔7 replicas on a single A100
 - **MIG (Multi-Instance GPU)** carves one A100 (40 GB) into 7 hardware-isolated 1g.5gb instances, one vllm pod per MIG instance — true memory + compute isolation, no noisy-neighbor risk
@@ -115,7 +115,11 @@ llm-deployment/
 │   │   ├── launch.sh                 # one-shot orchestrator (calls the above)
 │   │   ├── build-and-push.sh         # local image build (when CI is too slow)
 │   │   └── download-model.sh         # fetch Qwen2.5-0.5B from HuggingFace
-│   └── lambda/                       # (legacy folder; cloud work now on GCP_BRANCH)
+│   └── lambda/                       # Lambda Labs A100 bootstrap (this branch)
+│       ├── all_install.sh            # k8s tools + helm + auto MIG (7× 1g.5gb)
+│       ├── system.sh                 # kubeadm reset + init (private IP autodetect)
+│       ├── launch.sh                 # orchestrator: pre-pull + chown + helm installs
+│       └── download-model.sh         # fetch Qwen2.5-0.5B to /mnt/models
 │
 ├── description/                      # ASCII architecture diagrams (zh + en)
 └── .github/workflows/local-build.yml # CI: build + push images on push to main/telemetry
@@ -220,7 +224,7 @@ CPU utilization is the right knob for `llm-api` — its work is JSON serializati
 
 **Why is `vllm-worker` capped at 2?**
 
-The `nvidia-device-plugin` is configured for time-slicing into 2 slots on a single GPU (`tools/system/nvidia-device-plugin.yaml`). Asking K8s for a third `nvidia.com/gpu: 1` would Pend forever. On a multi-GPU node (e.g. GCP A100/H100/L4), bump the HPA `maxReplicas` and switch the device plugin to MIG.
+The `nvidia-device-plugin` is configured for time-slicing into 2 slots on a single GPU (`tools/system/nvidia-device-plugin.yaml`). Asking K8s for a third `nvidia.com/gpu: 1` would Pend forever. On the Lambda Labs A100 deployment (this branch) the plugin is switched to MIG `single` strategy with 7× 1g.5gb instances, bumping the HPA range to `1↔7`.
 
 **Components required for HPA to work** (all installed by `launch.sh`):
 
@@ -323,7 +327,7 @@ watch -n 2 'kubectl get hpa -n llm; echo; kubectl get pods -n llm'
 > ⚠️ The numbers below come from the **laptop reference deployment**
 > (kubeadm + RTX 4050 + time-slicing) on the `telemetry` branch.
 > They're kept here as the lower-bound baseline — A100 + MIG numbers
-> for this `GCP_BRANCH` will be filled in once the GKE deployment
+> for this `GCP_BRANCH` will be filled in once the Lambda Labs deployment
 > runs the same 6-stage suite.
 
 End-to-end benchmark on the laptop reference setup: **single-node K8s, NVIDIA RTX 4050 Laptop (6 GB VRAM, ~192 GB/s mem bandwidth), Qwen2.5-0.5B fp16, vLLM 0.11**. Full raw results live in [`test/results/baseline-pre-optimization/`](test/results/baseline-pre-optimization). Reproduce with:
@@ -403,10 +407,10 @@ Stages 02 and 03 reuse the same prompt for every request, so vLLM's automatic pr
 | Branch | Target | GPU | GPU sharing | HPA range | Storage |
 |---|---|---|---|---|---|
 | [`telemetry`](https://github.com/Johnny-dai-git/llm-deployment/tree/telemetry) | laptop, kubeadm | RTX 4050 6 GB | time-slicing (software, 2 slots) | 1↔2 | hostPath |
-| **`GCP_BRANCH`** *(this branch)* | GKE on GCP | A100 40 GB | **MIG (hardware, 7× 1g.5gb)** | 1↔7 | GCS Fuse / hostPath fallback |
+| **`GCP_BRANCH`** *(this branch)* | Lambda Labs (bare A100, kubeadm) | A100 40 GB | **MIG (hardware, 7× 1g.5gb)** | 1↔7 | hostPath (`/mnt/models`) |
 | `main` | stable line | — | — | — | — |
 
-Both deploy the same `Qwen2.5-0.5B-Instruct` fp16 model so the gap is purely about the underlying hardware and orchestration.
+Both deploy the same `Qwen2.5-0.5B-Instruct` fp16 model so the gap is purely about the underlying hardware and orchestration. The branch is named `GCP_BRANCH` for historical reasons (initially scoped to GKE) — the realized deployment is a Lambda Labs A100 instance.
 
 ## Troubleshooting
 

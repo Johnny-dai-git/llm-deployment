@@ -11,7 +11,7 @@ spec:
     kind: Deployment
     name: vllm-worker
   minReplicas: 1
-  # GCP A100 + MIG 1g.5gb × 7: each MIG instance is hardware-isolated,
+  # Lambda Labs A100 + MIG 1g.5gb × 7: each MIG instance is hardware-isolated,
   # one vllm pod per MIG. 7 replicas on a single A100 = highest
   # availability + isolation on a single physical GPU. Adding a second
   # A100 node bumps this to 14, etc.

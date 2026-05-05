@@ -34,7 +34,8 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Johnny-dai-git/llm-deployment.git
-    # GCP_BRANCH targets GKE + A100 + MIG.
+    # GCP_BRANCH targets a Lambda Labs bare A100 instance + MIG.
+    # (Branch name is historical — initially scoped to GKE.)
     # The laptop deployment uses the `telemetry` branch instead.
     targetRevision: GCP_BRANCH
     path: tools/llm
