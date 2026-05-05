@@ -113,7 +113,7 @@ llm-deployment/
 │   │   ├── launch.sh                 # one-shot orchestrator (calls the above)
 │   │   ├── build-and-push.sh         # local image build (when CI is too slow)
 │   │   └── download-model.sh         # fetch Qwen2.5-0.5B from HuggingFace
-│   └── lambda/                       # Cloud-side scripts (still developing)
+│   └── lambda/                       # (legacy folder; cloud work now on GCP_BRANCH)
 │
 ├── description/                      # ASCII architecture diagrams (zh + en)
 └── .github/workflows/local-build.yml # CI: build + push images on push to main/telemetry
@@ -218,7 +218,7 @@ CPU utilization is the right knob for `llm-api` — its work is JSON serializati
 
 **Why is `vllm-worker` capped at 2?**
 
-The `nvidia-device-plugin` is configured for time-slicing into 2 slots on a single GPU (`tools/system/nvidia-device-plugin.yaml`). Asking K8s for a third `nvidia.com/gpu: 1` would Pend forever. On a multi-GPU machine (e.g. Lambda), bump the HPA `maxReplicas` and the device plugin slot count together.
+The `nvidia-device-plugin` is configured for time-slicing into 2 slots on a single GPU (`tools/system/nvidia-device-plugin.yaml`). Asking K8s for a third `nvidia.com/gpu: 1` would Pend forever. On a multi-GPU node (e.g. GCP A100/H100/L4), bump the HPA `maxReplicas` and switch the device plugin to MIG.
 
 **Components required for HPA to work** (all installed by `launch.sh`):
 
@@ -390,19 +390,9 @@ Stages 02 and 03 reuse the same prompt for every request, so vLLM's automatic pr
 
 **Capacity planning should use the 06 numbers (~434 tok/s sustained, P95 5.9 s), not the 824 tok/s peak.**
 
-## Lambda Migration Notes
+## Cloud Deployment
 
-This setup runs on a single-node laptop. To move to Lambda Labs (or any multi-node cluster):
-
-- Build out `script/lambda/launch.sh` based on `script/laptop/launch.sh`
-- Replace GPU time-slicing with MIG on H100/A100 (`tools/system/nvidia-device-plugin.yaml` → use `migStrategy: single|mixed` instead of the time-slicing config)
-- Bump `vllm-hpa.yaml` `maxReplicas` from 2 to whatever your GPU count supports
-- Update `vllm-worker-deployment.yaml` `--gpu-memory-utilization` back to 0.8+ once each Pod has its own real GPU
-- Update `vllm-worker-deployment.yaml` `hostPath` from `/home/johnny/Desktop/projects/llm-server/models` to wherever Lambda mounts model weights
-- Add `nvidia.com/gpu:NoSchedule` taint to GPU nodes and matching toleration in vllm-worker / dcgm to prevent unrelated Pods from scheduling onto GPU nodes
-- Stop hardcoding the node name `system` in `script/.../system.sh` (use `$(hostname -s)` or `kubectl get nodes -o jsonpath=...`)
-- Add a real `imagePullSecret` if GHCR packages stay private (or change them to public)
-- Switch `argocd-image-updater/llm-application.yaml` `targetRevision` back to `main` once telemetry is promoted
+A separate `GCP_BRANCH` tracks the work for moving this stack onto GCP (GKE + GPU node pool, MIG instead of time-slicing, Artifact Registry instead of GHCR, GCS-mounted models). The `laptop` setup here is the reference deployment.
 
 ## Troubleshooting
 
