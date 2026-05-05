@@ -63,17 +63,25 @@ cd "${INSTALL_DIR}"
 sudo bash all_install.sh
 
 # ================================================================
-# Phase 2.5: containerd 配置对齐 (cgroup + nvidia runtime)
+# Phase 2.5: containerd 配置对齐 (cgroup + nvidia runtime + docker.io mirror)
 # ----------------------------------------------------------------
-# all_install.sh 已经把 SystemdCgroup 写好了,这里主要是注入
-# nvidia runtime handler。两个坑跟笔记本一样:
-#   1. nvidia-ctk runtime configure 会在新增的 nvidia block 里
-#      把 SystemdCgroup 写成 false → 必须再 sed 一遍
-#   2. 这一步必须在 system.sh (kubeadm init) 之前
+# all_install.sh 已经把 SystemdCgroup 写好了,这里再做两件事:
+#
+#   (a) 注入 nvidia runtime handler
+#       nvidia-ctk runtime configure 会在新增的 nvidia block 里把
+#       SystemdCgroup 写成 false → 必须再 sed 一遍
+#
+#   (b) 加 docker.io 的 registry mirror
+#       Lambda 出口 IP 拉 docker.io 经常被 throttle,导致 helper pod /
+#       grafana 镜像无限 ContainerCreating。用 mirror.gcr.io (Google 维
+#       护的 docker hub 镜像) 几乎从不卡。多次踩坑后写进默认配置。
+#
+# 必须在 system.sh (kubeadm init) 之前完成,否则控制面起来就崩。
 # ================================================================
-echo ">>> Phase 2.5: 注入 nvidia runtime handler 到 containerd"
+echo ">>> Phase 2.5: 校准 containerd (nvidia runtime + docker.io mirror)"
 NEED_RESTART_CONTAINERD=0
 
+# (a) nvidia runtime
 if command -v nvidia-ctk >/dev/null 2>&1; then
     if ! grep -q 'runtimes\.nvidia' /etc/containerd/config.toml 2>/dev/null; then
         echo "    - 用 nvidia-ctk 注入 nvidia runtime handler"
@@ -88,6 +96,28 @@ else
     exit 1
 fi
 
+# (b) docker.io mirror (Lambda 拉 docker hub 经常卡)
+if ! grep -q 'mirrors\."docker.io"' /etc/containerd/config.toml 2>/dev/null; then
+    echo "    - 加 docker.io mirror → mirror.gcr.io"
+    # 在 [plugins."io.containerd.grpc.v1.cri".registry.mirrors] 那一行后面插入
+    # docker.io mirror 块。如果该 anchor 行不存在(老 containerd 配置),
+    # 直接 append 完整块到文件末尾。
+    if grep -q '\[plugins\."io\.containerd\.grpc\.v1\.cri"\.registry\.mirrors\]' /etc/containerd/config.toml; then
+        sudo sed -i '/\[plugins\."io\.containerd\.grpc\.v1\.cri"\.registry\.mirrors\]/a\        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]\n          endpoint = ["https://mirror.gcr.io", "https://registry-1.docker.io"]' \
+            /etc/containerd/config.toml
+    else
+        sudo tee -a /etc/containerd/config.toml >/dev/null <<'EOF'
+
+[plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+    endpoint = ["https://mirror.gcr.io", "https://registry-1.docker.io"]
+EOF
+    fi
+    NEED_RESTART_CONTAINERD=1
+else
+    echo "    ✔ containerd 已有 docker.io mirror"
+fi
+
 if [ "${NEED_RESTART_CONTAINERD}" -eq 1 ]; then
     echo "    - 重启 containerd 让配置生效"
     sudo systemctl restart containerd
@@ -97,6 +127,92 @@ if [ "${NEED_RESTART_CONTAINERD}" -eq 1 ]; then
     done
 fi
 echo "    ✔ Phase 2.5 完成"
+
+# ================================================================
+# Phase 2.6: 通用 helper 函数 (后面所有 helm install 都用)
+# ----------------------------------------------------------------
+# Lambda 上踩过 3 次"kubelet image pull 卡死"的坑,根因是 kubelet
+# 内部 pull 状态机有时会 wedge,即使 image 本地已有也死等。
+# 解法是用 crictl 直接拉到 containerd cache,然后强删卡死 pod 让
+# ReplicaSet/StatefulSet 重建,这次会从 cache 命中秒起。
+#
+# 这两个函数把这个套路标准化,任何 helm 装包前后调用即可。
+# ================================================================
+
+# 用 helm template 提取 chart 渲染后的所有 image,然后 crictl pull 一遍。
+# 用法: prepull_helm_images <release> <chart> <namespace> [extra args...]
+prepull_helm_images() {
+    local release="$1"
+    local chart="$2"
+    local namespace="$3"
+    shift 3
+
+    echo ">>> Pre-pulling images for helm release '${release}'..."
+    local images
+    images=$(helm template "${release}" "${chart}" -n "${namespace}" "$@" 2>/dev/null \
+             | grep -E "^\s*image:" \
+             | awk '{print $2}' \
+             | tr -d '"' \
+             | sort -u)
+
+    if [ -z "$images" ]; then
+        echo "    (helm template 没产出 image,跳过)"
+        return 0
+    fi
+
+    while read -r img; do
+        [ -z "$img" ] && continue
+        echo "    -> $img"
+        sudo crictl pull "$img" >/dev/null 2>&1 || echo "       ⚠️  pull failed (会让 kubelet 自己重试)"
+    done <<< "$images"
+}
+
+# 强删 namespace 下所有非 Running 的 pod,让 controller 重建。
+# 用法: kick_stuck_pods <namespace>
+kick_stuck_pods() {
+    local namespace="$1"
+    echo ">>> 强删 ${namespace} 下卡住的 pod (让 controller 重建用 cache)..."
+    local stuck
+    stuck=$(kubectl get pods -n "${namespace}" --no-headers 2>/dev/null \
+            | awk '$3 != "Running" && $3 != "Completed" {print $1}')
+    if [ -z "$stuck" ]; then
+        echo "    (无卡死 pod)"
+        return 0
+    fi
+    while read -r pod; do
+        [ -z "$pod" ] && continue
+        echo "    强删 $pod"
+        kubectl delete pod -n "${namespace}" "$pod" --force --grace-period=0 2>/dev/null || true
+    done <<< "$stuck"
+}
+
+# Chown Grafana 的 local-path PV 到 UID 472。
+# 必须的:kps-values.yaml 里把 init-chown-data 关了(modern chart 用 non-root,
+# 在 hostPath PV 上 chown 会撞 Permission denied),所以由 launch.sh 在
+# 宿主机直接 chown 解决。fsGroup 对 hostPath 不生效。
+chown_grafana_pv() {
+    echo ">>> Chowning Grafana PV to UID 472:472..."
+    local pv hostpath
+    for i in $(seq 1 30); do
+        pv=$(kubectl get pvc -n monitoring monitoring-grafana \
+              -o jsonpath='{.spec.volumeName}' 2>/dev/null || true)
+        [ -n "$pv" ] && break
+        sleep 2
+    done
+    if [ -z "$pv" ]; then
+        echo "    ⚠️  PVC 还没 bound,跳过 chown(grafana 可能起不来)"
+        return 1
+    fi
+    hostpath=$(kubectl get pv "$pv" -o jsonpath='{.spec.hostPath.path}' 2>/dev/null || true)
+    if [ -z "$hostpath" ]; then
+        echo "    ⚠️  PV ${pv} 没有 hostPath,跳过"
+        return 1
+    fi
+    echo "    PV host path: $hostpath"
+    sudo chown -R 472:472 "$hostpath"
+    sudo chmod -R 775 "$hostpath"
+    echo "    ✔ chown 完成"
+}
 
 # ================================================================
 # Phase 3: k8s init
@@ -168,24 +284,36 @@ helm repo update
 # ================================================================
 # ingress-nginx
 # hostNetwork=true → 直接绑宿主机 :80,Lambda public IP 就能访问
+# 也走 prepull 套路,避免 webhook-certgen job pull 卡死把 controller 拖住
 # ================================================================
+kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+
+prepull_helm_images ingress-nginx ingress-nginx/ingress-nginx ingress-nginx \
+    --set controller.hostNetwork=true \
+    --set controller.dnsPolicy=ClusterFirstWithHostNet \
+    --set controller.service.type=ClusterIP
+
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   -n ingress-nginx --create-namespace \
   --set controller.hostNetwork=true \
   --set controller.dnsPolicy=ClusterFirstWithHostNet \
   --set controller.service.type=ClusterIP
 
-kubectl rollout status deployment ingress-nginx-controller -n ingress-nginx --timeout=120s || true
+kubectl rollout status deployment ingress-nginx-controller -n ingress-nginx --timeout=180s || true
 
 # ================================================================
 # ArgoCD
 # ================================================================
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 
+prepull_helm_images argocd argo/argo-cd argocd \
+    -f "${CONTROL_DIR}/helm/argocd/values.yaml"
+
 helm upgrade --install argocd argo/argo-cd \
   -n argocd \
   -f "${CONTROL_DIR}/helm/argocd/values.yaml" \
-  --wait --timeout 10m
+  --wait --timeout 15m \
+  || echo "⚠️  ArgoCD helm timeout,继续(controller 在追)"
 
 # ================================================================
 # ArgoCD Image Updater
@@ -213,23 +341,56 @@ kubectl get application llm-platform-services -n argocd || echo "⚠️  Applica
 
 # ================================================================
 # Monitoring
+# ----------------------------------------------------------------
+# 监控栈是镜像 pull 最容易踩坑的部分(grafana / kiwigrid 在 docker.io,
+# Lambda 上经常卡几十分钟)。流程改成:
+#   1. helm template 提取所有 image
+#   2. 用 crictl 预拉到 containerd cache(走 mirror.gcr.io)
+#   3. 再 helm install
+#   4. install 完立刻 chown grafana PV(kps-values.yaml 关了 init-chown-data)
+#   5. 强删任何还卡住的 pod(让 controller 重建,这次 cache 命中秒起)
 # ================================================================
 echo "===== Applying PriorityClasses for monitoring stack ====="
 kubectl apply -f "${CONTROL_DIR}/helm/monitoring/priority-classes.yaml"
 
+# 必须先 namespace,helm template 不会建 ns
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+
+# Step 1+2: 预拉所有镜像
+prepull_helm_images monitoring prometheus-community/kube-prometheus-stack monitoring \
+    -f "${CONTROL_DIR}/helm/monitoring/kps-values.yaml"
+
+# Step 3: helm install
 echo "===== Installing kube-prometheus-stack ====="
 helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace \
   -f "${CONTROL_DIR}/helm/monitoring/kps-values.yaml" \
   --reuse-values=false \
-  --wait --timeout 10m
+  --wait --timeout 15m \
+  || echo "⚠️  helm wait timeout (pod 大概率已 Running,继续)"
+
+# Step 4: PV 权限(必须在 grafana StatefulSet 重启拉起来之前 chown 好)
+chown_grafana_pv
+
+# Step 5: 强删卡死 pod(给 controller 一次"用 cache 重建"的机会)
+sleep 30
+kick_stuck_pods monitoring
+echo "    等 60 秒让 controller 重建..."
+sleep 60
+echo "    最终 monitoring 状态:"
+kubectl get pods -n monitoring
+
+# DCGM exporter
+prepull_helm_images dcgm nvidia/dcgm-exporter monitoring \
+    -f "${CONTROL_DIR}/helm/monitoring/dcgm/values.yaml"
 
 echo "===== Installing DCGM exporter ====="
 helm upgrade --install dcgm nvidia/dcgm-exporter \
   -n monitoring \
   -f "${CONTROL_DIR}/helm/monitoring/dcgm/values.yaml" \
   --reuse-values=false \
-  --wait --timeout 5m
+  --wait --timeout 5m \
+  || echo "⚠️  DCGM helm wait timeout,继续(DaemonSet 在追)"
 
 # ================================================================
 # DCGM Grafana Dashboard 自动 import
@@ -258,20 +419,29 @@ fi
 
 # ================================================================
 # HPA: metrics-server + prometheus-adapter
+# 同样套路:先 prepull 再 helm install
 # ================================================================
+prepull_helm_images metrics-server metrics-server/metrics-server kube-system \
+    --set 'args={--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP}'
+
 echo "===== Installing metrics-server (CPU/memory HPA) ====="
 helm upgrade --install metrics-server metrics-server/metrics-server \
   -n kube-system \
   --set 'args={--kubelet-insecure-tls,--kubelet-preferred-address-types=InternalIP}' \
   --reuse-values=false \
-  --wait --timeout 5m
+  --wait --timeout 5m \
+  || echo "⚠️  metrics-server helm timeout,继续"
+
+prepull_helm_images prometheus-adapter prometheus-community/prometheus-adapter monitoring \
+    -f "${CONTROL_DIR}/helm/monitoring/prometheus-adapter-values.yaml"
 
 echo "===== Installing prometheus-adapter (custom metrics HPA) ====="
 helm upgrade --install prometheus-adapter prometheus-community/prometheus-adapter \
   -n monitoring \
   -f "${CONTROL_DIR}/helm/monitoring/prometheus-adapter-values.yaml" \
   --reuse-values=false \
-  --wait --timeout 5m
+  --wait --timeout 5m \
+  || echo "⚠️  prometheus-adapter helm timeout,继续"
 
 # ================================================================
 # Landing Page

@@ -18,6 +18,14 @@
 grafana:
   enabled: true
 
+  # ============ Init container fix (Lambda / hostPath PV) ============
+  # 现代 Grafana chart (v8+) 把 init-chown-data 改成 non-root + 丢 CAP_CHOWN,
+  # 在 hostPath / local-path PV 上会撞 "Permission denied" → CrashLoopBackOff。
+  # 关掉它,让 launch.sh 在 PVC bound 后直接在宿主机 chown 472:472。
+  # 见 script/lambda/launch.sh 中 chown_grafana_pv 函数。
+  initChownData:
+    enabled: false
+
   # ============ Eviction protection ============
   priorityClassName: monitoring-critical
 
