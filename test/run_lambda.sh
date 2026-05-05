@@ -65,7 +65,7 @@ should_run() {
     return 1
 }
 
-# 7 tests, 07 is Lambda-only
+# 8 tests, 07 + 08 are Lambda-only
 TESTS=(
     "smoke|01_smoke.sh|Functional smoke (7 cases)"
     "latency|02_latency.sh|Latency (concurrency 1/4/8)"
@@ -74,6 +74,7 @@ TESTS=(
     "stability|05_stability.sh|Stability (${STABILITY_DURATION}s sustained load)"
     "realistic|06_realistic_load.sh|Realistic load (random prompts)"
     "mig|07_mig_isolation.sh|MIG hardware isolation (Lambda only)"
+    "extreme|08_extreme_stress.sh|Extreme stress (drive HPA → 7, push GPU compute %, Lambda only)"
 )
 
 # ============ Run tests ============

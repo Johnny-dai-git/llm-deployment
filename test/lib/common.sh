@@ -190,10 +190,14 @@ count_active_mig_instances() {
         || echo "0"
 }
 
-# List MIG instances currently bound to pods.
+# List MIG instances currently bound to vLLM pods.
 # Returns lines like "MIG-13 vllm-worker-xxx" (one per attached MIG).
+# Note: Prometheus relabels DCGM's `pod` to `exported_pod` because the
+# scraping pod is the dcgm-exporter itself; the workload pod label moves
+# to exported_pod. We filter on that to only see workload pods, not the
+# exporter pod's own self-record.
 list_mig_pod_bindings() {
-    prometheus_query 'DCGM_FI_DEV_FB_USED{pod!=""}' 2>/dev/null \
-        | jq -r '.data.result[]? | "MIG-\(.metric.GPU_I_ID) \(.metric.pod)"' 2>/dev/null \
+    prometheus_query 'DCGM_FI_DEV_FB_USED{exported_pod!=""}' 2>/dev/null \
+        | jq -r '.data.result[]? | "MIG-\(.metric.GPU_I_ID) \(.metric.exported_pod)"' 2>/dev/null \
         | sort -u
 }

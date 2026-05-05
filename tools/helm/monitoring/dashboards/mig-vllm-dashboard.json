@@ -122,7 +122,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "count(count by (pod) (DCGM_FI_DEV_SM_CLOCK{pod!=\"\"}))",
+          "expr": "count(count by (exported_pod) (DCGM_FI_DEV_SM_CLOCK{exported_pod!=\"\"}))",
           "legendFormat": "Pods",
           "refId": "A"
         }
@@ -155,7 +155,7 @@
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
-          "expr": "DCGM_FI_DEV_FB_USED{pod!=\"\"}",
+          "expr": "DCGM_FI_DEV_FB_USED{exported_pod!=\"\"}",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -179,21 +179,23 @@
               "job": true,
               "service": true,
               "container": true,
+              "pod": true,
               "pod_uid": true,
-              "gpu": true
+              "gpu": true,
+              "namespace": true,
+              "exported_container": true,
+              "exported_namespace": true
             },
             "indexByName": {
               "GPU_I_ID": 0,
               "GPU_I_PROFILE": 1,
-              "namespace": 2,
-              "pod": 3,
-              "Value": 4
+              "exported_pod": 2,
+              "Value": 3
             },
             "renameByName": {
               "GPU_I_ID": "MIG ID",
               "GPU_I_PROFILE": "Profile",
-              "pod": "Pod",
-              "namespace": "Namespace",
+              "exported_pod": "vLLM Pod",
               "Value": "VRAM Used (MiB)"
             }
           }
@@ -226,7 +228,7 @@
       "targets": [
         {
           "expr": "DCGM_FI_PROF_GR_ENGINE_ACTIVE",
-          "legendFormat": "MIG-{{GPU_I_ID}} {{pod}}",
+          "legendFormat": "MIG-{{GPU_I_ID}} {{exported_pod}}",
           "refId": "A"
         }
       ],
@@ -263,7 +265,7 @@
       "targets": [
         {
           "expr": "DCGM_FI_PROF_PIPE_TENSOR_ACTIVE",
-          "legendFormat": "MIG-{{GPU_I_ID}} {{pod}}",
+          "legendFormat": "MIG-{{GPU_I_ID}} {{exported_pod}}",
           "refId": "A"
         }
       ],
@@ -297,7 +299,7 @@
       "targets": [
         {
           "expr": "DCGM_FI_DEV_FB_USED",
-          "legendFormat": "MIG-{{GPU_I_ID}} {{pod}}",
+          "legendFormat": "MIG-{{GPU_I_ID}} {{exported_pod}}",
           "refId": "A"
         }
       ],
@@ -329,7 +331,7 @@
       "targets": [
         {
           "expr": "DCGM_FI_PROF_DRAM_ACTIVE",
-          "legendFormat": "MIG-{{GPU_I_ID}} {{pod}}",
+          "legendFormat": "MIG-{{GPU_I_ID}} {{exported_pod}}",
           "refId": "A"
         }
       ],
