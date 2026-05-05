@@ -307,6 +307,56 @@ else
 fi
 
 # ================================================================
+# NVIDIA DCGM Grafana Dashboard 自动 import (仅 GPU 节点)
+# ----------------------------------------------------------------
+# 思路:
+#   kube-prometheus-stack 自带 grafana-sc-dashboard sidecar,
+#   它会把所有带 label `grafana_dashboard=1` 的 ConfigMap 自动转成
+#   dashboard 写到 /tmp/dashboards/。我们下载 NVIDIA 官方 dashboard
+#   12239 的 JSON,塞进 ConfigMap,sidecar 就会接管。
+#
+# 不靠 Grafana admin API(那个要密码,且在匿名 admin 模式下 401)。
+# 不靠 helm values(改动 kps 还要 helm upgrade,代价大)。
+# 这条路 idempotent,反复跑不会出错。
+# ================================================================
+if [ "${HAS_GPU}" -eq 1 ]; then
+    echo "===== Installing NVIDIA DCGM Grafana dashboard ====="
+    DCGM_DASHBOARD=/tmp/dcgm-dashboard.json
+
+    # 下载 NVIDIA 官方 DCGM Exporter Dashboard (id=12239) latest revision
+    if curl -sfL "https://grafana.com/api/dashboards/12239/revisions/latest/download" -o "${DCGM_DASHBOARD}"; then
+        DCGM_SIZE=$(wc -c < "${DCGM_DASHBOARD}" 2>/dev/null || echo 0)
+        if [ "${DCGM_SIZE}" -lt 5000 ]; then
+            echo "⚠️  DCGM dashboard 下载内容异常(size=${DCGM_SIZE} < 5KB),跳过"
+        else
+            # 替换 datasource 占位符为实际 datasource 名(kube-prometheus-stack 默认叫 'Prometheus')
+            sed -i 's|${DS_PROMETHEUS}|Prometheus|g' "${DCGM_DASHBOARD}"
+
+            # 创建带 grafana_dashboard=1 label 的 ConfigMap,sidecar 自动加载
+            kubectl -n monitoring create configmap nvidia-dcgm-dashboard \
+                --from-file=dcgm-dashboard.json="${DCGM_DASHBOARD}" \
+                --dry-run=client -o yaml \
+                | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
+                | kubectl apply -f -
+
+            # 等 sidecar 把文件写入 grafana 容器
+            sleep 30
+
+            # 让 Grafana 重新扫描 provisioning 目录(SIGHUP 让其 reload 配置)
+            GRAFANA_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            if [ -n "${GRAFANA_POD}" ]; then
+                kubectl exec -n monitoring "${GRAFANA_POD}" -c grafana -- killall -SIGHUP grafana 2>/dev/null || true
+                echo "✓ DCGM dashboard 已 import,在 Grafana 搜索 'nvidia' 或 'dcgm' 即可看到"
+            else
+                echo "⚠️  Grafana pod 未找到,dashboard 文件已写入 ConfigMap,Grafana 启动后自动加载"
+            fi
+        fi
+    else
+        echo "⚠️  无法从 grafana.com 下载 DCGM dashboard(网络或 URL 失效),跳过"
+    fi
+fi
+
+# ================================================================
 # HPA support: metrics-server + prometheus-adapter
 # ================================================================
 # metrics-server: 提供 K8s 资源指标(CPU/内存),HPA 用 Resource 类型时必需
