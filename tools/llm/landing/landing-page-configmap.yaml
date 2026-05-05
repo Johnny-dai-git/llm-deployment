@@ -6,17 +6,383 @@ metadata:
 data:
   index.html: |
     <!doctype html>
-    <html>
+    <html lang="en">
     <head>
       <meta charset="utf-8">
-      <title>LLM Platform</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>LLM Inference Platform · Self-Hosted on Kubernetes</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+          background: #0a0e1a;
+          background-image:
+            radial-gradient(at 0% 0%, rgba(96, 165, 250, 0.15) 0px, transparent 50%),
+            radial-gradient(at 100% 100%, rgba(167, 139, 250, 0.15) 0px, transparent 50%);
+          background-attachment: fixed;
+          color: #e2e8f0;
+          min-height: 100vh;
+          padding: 60px 20px;
+          line-height: 1.6;
+        }
+        .container { max-width: 1100px; margin: 0 auto; }
+
+        /* === Hero === */
+        .hero { text-align: center; margin-bottom: 64px; }
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 6px 14px;
+          background: rgba(34, 197, 94, 0.12);
+          color: #4ade80;
+          border: 1px solid rgba(34, 197, 94, 0.3);
+          border-radius: 999px;
+          font-size: 13px;
+          font-weight: 500;
+          margin-bottom: 24px;
+        }
+        .badge::before {
+          content: "";
+          width: 8px; height: 8px;
+          border-radius: 50%;
+          background: #4ade80;
+          margin-right: 8px;
+          animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(0.85); }
+        }
+        h1 {
+          font-size: clamp(34px, 6vw, 56px);
+          font-weight: 800;
+          background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          margin-bottom: 14px;
+          letter-spacing: -0.02em;
+          line-height: 1.1;
+        }
+        .subtitle {
+          font-size: 17px;
+          color: #94a3b8;
+          max-width: 720px;
+          margin: 0 auto 28px;
+        }
+        .stack {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          justify-content: center;
+          max-width: 820px;
+          margin: 0 auto;
+        }
+        .tech {
+          padding: 6px 12px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 6px;
+          font-size: 12.5px;
+          color: #cbd5e1;
+          font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        }
+
+        /* === Stats === */
+        .stats {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+          gap: 14px;
+          margin-bottom: 56px;
+        }
+        .stat {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          padding: 22px;
+          text-align: center;
+        }
+        .stat-value {
+          font-size: 32px;
+          font-weight: 700;
+          background: linear-gradient(135deg, #60a5fa, #a78bfa);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          line-height: 1;
+          margin-bottom: 8px;
+        }
+        .stat-label {
+          font-size: 12px;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+
+        /* === Section heading === */
+        h2 {
+          font-size: 22px;
+          font-weight: 600;
+          margin-bottom: 20px;
+          color: #f1f5f9;
+        }
+        h2 .num {
+          font-size: 14px;
+          color: #475569;
+          margin-right: 10px;
+          font-weight: 500;
+          font-family: ui-monospace, monospace;
+        }
+
+        /* === Architecture flow === */
+        .arch {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          padding: 28px;
+          margin-bottom: 48px;
+        }
+        .flow {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          font-family: ui-monospace, monospace;
+          font-size: 13px;
+        }
+        .node {
+          padding: 10px 18px;
+          background: rgba(96, 165, 250, 0.1);
+          border: 1px solid rgba(96, 165, 250, 0.3);
+          border-radius: 8px;
+          color: #93c5fd;
+          white-space: nowrap;
+        }
+        .node.gpu {
+          background: rgba(74, 222, 128, 0.1);
+          border-color: rgba(74, 222, 128, 0.3);
+          color: #86efac;
+        }
+        .arrow { color: #475569; font-size: 16px; }
+
+        /* === Services grid === */
+        .services {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 16px;
+          margin-bottom: 56px;
+        }
+        .service {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          padding: 22px;
+          text-decoration: none;
+          color: inherit;
+          transition: all 0.2s ease;
+          display: block;
+          position: relative;
+          overflow: hidden;
+        }
+        .service::before {
+          content: "";
+          position: absolute;
+          top: 0; left: 0;
+          width: 3px; height: 100%;
+          background: linear-gradient(180deg, #60a5fa, #a78bfa);
+          opacity: 0;
+          transition: opacity 0.2s ease;
+        }
+        .service:hover {
+          background: rgba(255, 255, 255, 0.05);
+          border-color: rgba(96, 165, 250, 0.3);
+          transform: translateY(-2px);
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+        .service:hover::before { opacity: 1; }
+        .service-icon {
+          font-size: 24px;
+          margin-bottom: 10px;
+          display: block;
+        }
+        .service-title {
+          font-size: 17px;
+          font-weight: 600;
+          margin-bottom: 6px;
+          color: #f1f5f9;
+        }
+        .service-desc {
+          font-size: 13.5px;
+          color: #94a3b8;
+          margin-bottom: 12px;
+          line-height: 1.5;
+        }
+        .service-arrow {
+          font-size: 13px;
+          color: #60a5fa;
+          font-family: ui-monospace, monospace;
+        }
+
+        /* === Highlights === */
+        .highlights {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 14px;
+          margin-bottom: 56px;
+        }
+        .hl {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 10px;
+          padding: 18px;
+        }
+        .hl-icon { font-size: 20px; margin-bottom: 8px; display: block; }
+        .hl-title { font-weight: 600; color: #f1f5f9; margin-bottom: 4px; font-size: 14.5px; }
+        .hl-desc { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+
+        /* === Footer === */
+        footer {
+          text-align: center;
+          color: #64748b;
+          font-size: 13px;
+          padding: 32px 0 8px;
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        footer a {
+          color: #60a5fa;
+          text-decoration: none;
+          font-family: ui-monospace, monospace;
+        }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 600px) {
+          body { padding: 30px 14px; }
+          .hero { margin-bottom: 40px; }
+          .arrow { display: none; }
+          .flow { flex-direction: column; }
+        }
+      </style>
     </head>
     <body>
-      <h2>LLM Platform Entry</h2>
-      <ul>
-        <li><a href="/web">Web UI</a></li>
-        <li><a href="/grafana">Grafana</a></li>
-        <li><a href="/prometheus/">Prometheus</a></li>
-      </ul>
+      <div class="container">
+
+        <div class="hero">
+          <div class="badge">Cluster Online</div>
+          <h1>LLM Inference Platform</h1>
+          <p class="subtitle">
+            End-to-end self-hosted LLM serving on a single-node Kubernetes cluster.
+            From bare metal to OpenAI-compatible streaming API, with full observability and GitOps.
+          </p>
+          <div class="stack">
+            <span class="tech">Kubernetes</span>
+            <span class="tech">vLLM 0.11</span>
+            <span class="tech">FastAPI</span>
+            <span class="tech">Calico</span>
+            <span class="tech">NVIDIA DCGM</span>
+            <span class="tech">GPU time-slicing</span>
+            <span class="tech">ArgoCD</span>
+            <span class="tech">Prometheus</span>
+            <span class="tech">Grafana</span>
+            <span class="tech">HPA v2</span>
+            <span class="tech">GitHub Actions</span>
+          </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value">~800</div>
+            <div class="stat-label">Peak tok/s</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">1↔2</div>
+            <div class="stat-label">HPA replicas</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">2.4 GB</div>
+            <div class="stat-label">VRAM / replica</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">0.5B</div>
+            <div class="stat-label">Qwen 2.5</div>
+          </div>
+        </div>
+
+        <h2><span class="num">01</span>Request Flow</h2>
+        <div class="arch">
+          <div class="flow">
+            <div class="node">Client</div>
+            <div class="arrow">→</div>
+            <div class="node">NGINX Ingress</div>
+            <div class="arrow">→</div>
+            <div class="node">FastAPI Gateway</div>
+            <div class="arrow">→</div>
+            <div class="node">vLLM Worker</div>
+            <div class="arrow">→</div>
+            <div class="node gpu">RTX 4050 GPU</div>
+          </div>
+        </div>
+
+        <h2><span class="num">02</span>Services</h2>
+        <div class="services">
+          <a href="/web" class="service">
+            <span class="service-icon">💬</span>
+            <div class="service-title">Chat UI</div>
+            <div class="service-desc">Static frontend talking to the gateway via OpenAI-compatible API.</div>
+            <div class="service-arrow">/web →</div>
+          </a>
+
+          <a href="/api/v1/models" class="service">
+            <span class="service-icon">🔌</span>
+            <div class="service-title">LLM API</div>
+            <div class="service-desc">FastAPI gateway · OpenAI-compatible · SSE streaming.</div>
+            <div class="service-arrow">/api/v1/models →</div>
+          </a>
+
+          <a href="/grafana" class="service">
+            <span class="service-icon">📊</span>
+            <div class="service-title">Grafana</div>
+            <div class="service-desc">GPU metrics (DCGM), vLLM business metrics, K8s cluster — 30+ dashboards.</div>
+            <div class="service-arrow">/grafana →</div>
+          </a>
+
+          <a href="/prometheus/" class="service">
+            <span class="service-icon">🔥</span>
+            <div class="service-title">Prometheus</div>
+            <div class="service-desc">Raw metrics, ad-hoc queries, alerting rules.</div>
+            <div class="service-arrow">/prometheus/ →</div>
+          </a>
+        </div>
+
+        <h2><span class="num">03</span>Engineering Highlights</h2>
+        <div class="highlights">
+          <div class="hl">
+            <span class="hl-icon">⚙️</span>
+            <div class="hl-title">GPU time-slicing</div>
+            <div class="hl-desc">1 physical RTX 4050 → 2 virtual nvidia.com/gpu slots, configured via NVIDIA Device Plugin.</div>
+          </div>
+          <div class="hl">
+            <span class="hl-icon">📈</span>
+            <div class="hl-title">Custom-metrics HPA</div>
+            <div class="hl-desc">Autoscales on vLLM num_requests_waiting queue depth via prometheus-adapter — not CPU.</div>
+          </div>
+          <div class="hl">
+            <span class="hl-icon">🚀</span>
+            <div class="hl-title">GitOps with ArgoCD</div>
+            <div class="hl-desc">Image Updater detects new tags from GHCR; selfHeal auto-syncs; ignoreDifferences for HPA fields.</div>
+          </div>
+          <div class="hl">
+            <span class="hl-icon">🧪</span>
+            <div class="hl-title">6-stage test suite</div>
+            <div class="hl-desc">Functional, latency P50-P99, throughput, HPA scaling, sustained load, realistic random-prompt load.</div>
+          </div>
+        </div>
+
+        <footer>
+          Built by Johnny ·
+          <a href="https://github.com/Johnny-dai-git/llm-deployment" target="_blank" rel="noopener">github.com/Johnny-dai-git/llm-deployment</a>
+        </footer>
+
+      </div>
     </body>
     </html>
