@@ -1,5 +1,16 @@
 # kube-prometheus-stack Helm Values
 # Demo 场景：子路径 + Ingress + IP 可变
+#
+# ============================================================================
+# Eviction protection (双管齐下):
+#   1. priorityClassName: monitoring-critical (value=100000)
+#      → 节点压力下,kubelet 优先 evict workload pod 不动监控
+#   2. requests == limits  (Guaranteed QoS)
+#      → kubelet 在 evict 时,Guaranteed 是最后一档(BestEffort < Burstable < Guaranteed)
+#
+# 两个机制组合:监控组件几乎只有节点真死/失联才会受影响,普通负载尖峰打不坏。
+# 见: tools/helm/monitoring/priority-classes.yaml (需要先 kubectl apply)
+# ============================================================================
 
 # =======================
 # Grafana
@@ -7,10 +18,14 @@
 grafana:
   enabled: true
 
+  # ============ Eviction protection ============
+  priorityClassName: monitoring-critical
+
+  # Guaranteed QoS:requests = limits → kubelet evict 优先级最低
   resources:
     requests:
-      cpu: "100m"
-      memory: "256Mi"
+      cpu: "500m"
+      memory: "1Gi"
     limits:
       cpu: "500m"
       memory: "1Gi"
@@ -65,12 +80,24 @@ grafana:
     size: 10Gi
 
 # =======================
-# Prometheus Ingress
+# Prometheus
 # =======================
 prometheus:
   enabled: true
 
   prometheusSpec:
+    # ============ Eviction protection ============
+    priorityClassName: monitoring-critical
+
+    # Guaranteed QoS:requests = limits
+    resources:
+      requests:
+        cpu: "1"
+        memory: "2Gi"
+      limits:
+        cpu: "1"
+        memory: "2Gi"
+
     # Prometheus 自己处理子路径
     routePrefix: /prometheus
     externalUrl: /prometheus
@@ -93,14 +120,6 @@ prometheus:
     ruleNamespaceSelectorNilUsesHelmValues: false
     ruleSelector: {}
     ruleNamespaceSelector: {}
-
-    resources:
-      requests:
-        cpu: "500m"
-        memory: "1Gi"
-      limits:
-        cpu: "2"
-        memory: "4Gi"
 
     retention: 30d
 
@@ -128,6 +147,18 @@ prometheus:
 alertmanager:
   enabled: true
   alertmanagerSpec:
+    # ============ Eviction protection ============
+    priorityClassName: monitoring-critical
+
+    # Guaranteed QoS:requests = limits
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "100m"
+        memory: "256Mi"
+
     affinity:
       nodeAffinity:
         preferredDuringSchedulingIgnoredDuringExecution:
@@ -143,16 +174,49 @@ alertmanager:
         operator: "Exists"
         effect: "NoSchedule"
 
+# =======================
+# Prometheus Operator (kps 自身的 controller)
+# 中等优先级,这是管 Prometheus/Alertmanager CR 的中枢
+# =======================
+prometheusOperator:
+  priorityClassName: monitoring-critical
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
 
 # =======================
-# Node Exporter
+# Node Exporter (DaemonSet, 每节点一个,本身就是 system-node-critical 概念)
+# 给 standard 等级即可,不抢 critical
 # =======================
 nodeExporter:
   enabled: true
 
+prometheus-node-exporter:
+  priorityClassName: monitoring-standard
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "50m"
+      memory: "64Mi"
 
 # =======================
 # Kube State Metrics
 # =======================
 kubeStateMetrics:
   enabled: true
+
+kube-state-metrics:
+  priorityClassName: monitoring-standard
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "50m"
+      memory: "128Mi"

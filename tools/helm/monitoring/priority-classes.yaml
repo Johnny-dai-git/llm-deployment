@@ -1,0 +1,38 @@
+# =====================================================================
+# PriorityClasses for the monitoring stack
+# ---------------------------------------------------------------------
+# 当节点资源紧张(GPU pod 扩容 / vllm 吃内存等)时,kubelet 会按
+# QoS + PriorityClass 决定先 evict 谁。
+#
+# 默认所有 pod 的 priorityClassName 是空,等价于 priority=0,
+# 跟所有用户工作负载一起按 QoS 排序被 evict。Grafana 在没 priority
+# 的情况下被 evict 是已观察到的现象。
+#
+# 这里定义两档:
+#   monitoring-critical:    Grafana / Prometheus / Alertmanager - 100000
+#   monitoring-standard:    其他可选(DCGM / kube-state-metrics)  - 50000
+#
+# 数值参考(系统预留范围):
+#   system-cluster-critical = 2,000,000,000
+#   system-node-critical    = 2,000,001,000
+# 我们这两个远低于系统级,但远高于默认 0,达到"先 evict workload,
+# 后 evict 监控"的目标。
+# =====================================================================
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: monitoring-critical
+value: 100000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "Critical monitoring stack: Grafana, Prometheus, Alertmanager. Protect from node-pressure eviction."
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: monitoring-standard
+value: 50000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "Standard monitoring components: DCGM exporter, kube-state-metrics, etc."

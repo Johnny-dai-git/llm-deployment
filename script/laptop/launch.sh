@@ -287,6 +287,17 @@ echo "✅ ArgoCD Applications deployed"
 # Monitoring(kube-prometheus-stack + DCGM)
 # --reuse-values=false:确保 kps-values.yaml 改动后真的生效
 # ================================================================
+
+# ----------------------------------------------------------------
+# 先 apply PriorityClass(kps 的 helm values 会引用它,如果先装 helm
+# 后 apply,helm 会抱怨 PriorityClass 不存在)
+# 见 priority-classes.yaml 里两档:
+#   monitoring-critical  (100000) Grafana / Prometheus / Alertmanager
+#   monitoring-standard  (50000)  node-exporter / kube-state-metrics
+# ----------------------------------------------------------------
+echo "===== Applying PriorityClasses for monitoring stack ====="
+kubectl apply -f "${CONTROL_DIR}/helm/monitoring/priority-classes.yaml"
+
 echo "===== Installing kube-prometheus-stack ====="
 helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace \
