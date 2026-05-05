@@ -1,47 +1,47 @@
 #!/bin/bash
 # ================================================================
-# run_lambda.sh — Lambda A100 / GCP_BRANCH 全套压力测试入口
+# run_lambda.sh — Lambda A100 / GCP_BRANCH full stress test entry
 # ----------------------------------------------------------------
-# 跟 run_all.sh 的差别:
-#   - 自动检测 public IP (从 ifconfig.me),设 TEST_ENDPOINT
-#   - 默认参数针对 A100 + 7 MIG 调高:
-#     · HPA 测试并发 30 (vs laptop 10) —— 真把 HPA 推到 7 副本
-#     · realistic 负载并发 14 (vs 8)    —— 7 MIG × 2
-#   - 多跑 07_mig_isolation —— Lambda 才有意义的测试
-#   - SUMMARY.md 加一段 vs laptop baseline 对比
+# Differences from run_all.sh:
+#   - Auto-detect public IP (from ifconfig.me), set TEST_ENDPOINT
+#   - Default parameters tuned for A100 + 7 MIG:
+#     · HPA test concurrency 30 (vs laptop 10) —— actually push HPA to 7 replicas
+#     · realistic load concurrency 14 (vs 8)    —— 7 MIG × 2
+#   - Also run 07_mig_isolation —— only meaningful on Lambda
+#   - SUMMARY.md includes vs laptop baseline comparison
 #
-# 用法:
-#   ./run_lambda.sh                 # 全套 (~20 分钟)
-#   ./run_lambda.sh smoke latency   # 只跑指定子集
+# Usage:
+#   ./run_lambda.sh                 # full suite (~20 min)
+#   ./run_lambda.sh smoke latency   # run only specified subset
 #
-# 环境变量(可覆盖默认值):
-#   TEST_ENDPOINT          - 默认从 ifconfig.me 取
-#   HPA_LOAD_CONCURRENCY   - 默认 30
-#   HPA_LOAD_DURATION      - 默认 240 秒(给 HPA 充分时间扩到 7)
-#   MIG_LOAD_CONCURRENCY   - 默认 20 (07 测试用)
+# Environment variables (can override defaults):
+#   TEST_ENDPOINT          - default from ifconfig.me
+#   HPA_LOAD_CONCURRENCY   - default 30
+#   HPA_LOAD_DURATION      - default 240 seconds (enough time for HPA to scale to 7)
+#   MIG_LOAD_CONCURRENCY   - default 20 (for test 07)
 # ================================================================
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ============ 自动检测 public IP ============
+# ============ Auto-detect public IP ============
 if [ -z "${TEST_ENDPOINT:-}" ]; then
     PUB_IP=$(curl -fsS --max-time 5 ifconfig.me 2>/dev/null || true)
     if [ -n "$PUB_IP" ]; then
         export TEST_ENDPOINT="http://${PUB_IP}/api/v1/chat/completions"
         echo ">>> Auto-detected public endpoint: ${TEST_ENDPOINT}"
     else
-        echo "⚠️  ifconfig.me 不可达,fallback to localhost"
+        echo "⚠️  ifconfig.me unreachable, fallback to localhost"
         export TEST_ENDPOINT="http://localhost/api/v1/chat/completions"
     fi
 fi
 
-# ============ Lambda 调高的默认参数 ============
+# ============ Lambda tuned default parameters ============
 # laptop default → Lambda recommended:
 #   HPA_LOAD_CONCURRENCY: 10  → 30
-#   HPA_LOAD_DURATION:    180 → 240   (给 HPA 充分扩到 7)
-#   MIG_LOAD_CONCURRENCY: 20  (新)
-#   MIG_LOAD_DURATION:    90  (新)
+#   HPA_LOAD_DURATION:    180 → 240   (sufficient time for HPA to scale to 7)
+#   MIG_LOAD_CONCURRENCY: 20  (new)
+#   MIG_LOAD_DURATION:    90  (new)
 export HPA_LOAD_CONCURRENCY="${HPA_LOAD_CONCURRENCY:-30}"
 export HPA_LOAD_DURATION="${HPA_LOAD_DURATION:-240}"
 export MIG_LOAD_CONCURRENCY="${MIG_LOAD_CONCURRENCY:-20}"
@@ -54,7 +54,7 @@ check_deps
 check_endpoint
 init_results_dir
 
-# ============ 选择性跑子集 ============
+# ============ Selectively run subset ============
 SELECTED=("$@")
 should_run() {
     local name="$1"
@@ -65,18 +65,18 @@ should_run() {
     return 1
 }
 
-# 7 个测试,07 是 Lambda-only
+# 7 tests, 07 is Lambda-only
 TESTS=(
-    "smoke|01_smoke.sh|功能性 smoke (7 case)"
-    "latency|02_latency.sh|延迟 (concurrency 1/4/8)"
-    "throughput|03_throughput.sh|吞吐 (4 个 prompt-output 组合)"
-    "hpa|04_hpa.sh|HPA 扩容 (1↔7 expected on Lambda)"
-    "stability|05_stability.sh|稳定性 (${STABILITY_DURATION}s 持续负载)"
-    "realistic|06_realistic_load.sh|真实负载 (60 随机 prompt)"
-    "mig|07_mig_isolation.sh|MIG 硬件隔离 (Lambda only)"
+    "smoke|01_smoke.sh|Functional smoke (7 cases)"
+    "latency|02_latency.sh|Latency (concurrency 1/4/8)"
+    "throughput|03_throughput.sh|Throughput (4 prompt-output combinations)"
+    "hpa|04_hpa.sh|HPA scaling (1↔7 expected on Lambda)"
+    "stability|05_stability.sh|Stability (${STABILITY_DURATION}s sustained load)"
+    "realistic|06_realistic_load.sh|Realistic load (random prompts)"
+    "mig|07_mig_isolation.sh|MIG hardware isolation (Lambda only)"
 )
 
-# ============ 跑测试 ============
+# ============ Run tests ============
 echo ""
 echo "================================================================"
 echo "  Lambda A100 stress test suite"
@@ -101,10 +101,10 @@ for entry in "${TESTS[@]}"; do
 
     log_step "${name}: ${desc}"
     if [ ! -x "${SCRIPT_DIR}/${script}" ]; then
-        log_warn "  脚本不存在或不可执行: ${script}"
+        log_warn "  Script not found or not executable: ${script}"
         continue
     fi
-    bash "${SCRIPT_DIR}/${script}" || log_warn "  ${name} 退出非零(继续)"
+    bash "${SCRIPT_DIR}/${script}" || log_warn "  ${name} exited non-zero (continuing)"
     echo ""
 done
 
@@ -112,10 +112,10 @@ END_TS=$(date +%s)
 TOTAL_MIN=$(( (END_TS - START_TS) / 60 ))
 TOTAL_SEC=$(( (END_TS - START_TS) % 60 ))
 
-# ============ 生成 Lambda-specific SUMMARY.md ============
+# ============ Generate Lambda-specific SUMMARY.md ============
 SUMMARY="${RESULTS_DIR}/SUMMARY.md"
 
-# 读关键指标(每个 sub-test 的 .json)
+# Read key metrics (from each sub-test's .json)
 read_field() {
     local file="$1"; local key="$2"; local default="${3:-?}"
     if [ -f "$file" ]; then
@@ -140,7 +140,7 @@ cat > "${SUMMARY}" <<EOF
 |---|---|---|
 EOF
 
-# 各阶段一行
+# One row per stage
 for entry in "${TESTS[@]}"; do
     name="${entry%%|*}"
     rest="${entry#*|}"
@@ -196,7 +196,7 @@ The \`telemetry\` branch (RTX 4050 6 GB, GPU time-slicing 2 slots) baseline was:
 | HPA range | 1 ↔ 2 | 1 ↔ 7 |
 | Peak throughput | ~824 tok/s | $(read_field "${RESULTS_DIR}/03_throughput.json" "long_prompt_long_output.output_tok_per_sec" "?") tok/s |
 | Realistic (random prompts) sustained | ~434 tok/s | $(read_field "${RESULTS_DIR}/06_realistic_load.json" "output_tok_per_sec" "?") tok/s |
-| Realistic P95 latency | 5 881 ms | $(read_field "${RESULTS_DIR}/06_realistic_load.json" "p95_ms" "?") ms |
+| Realistic P95 latency | 5,881 ms | $(read_field "${RESULTS_DIR}/06_realistic_load.json" "p95_ms" "?") ms |
 | GPU isolation | software time-slicing | hardware MIG (7 instances) |
 
 Per-stage details: \`${RESULTS_DIR}/0[1-7]_*.json\` and \`*.log\`.
@@ -210,7 +210,7 @@ EOF
 
 echo ""
 echo "================================================================"
-log_info "✅ All tests done in ${TOTAL_MIN}m ${TOTAL_SEC}s"
+log_info "✅ All tests complete in ${TOTAL_MIN}m ${TOTAL_SEC}s"
 log_info "Summary: ${SUMMARY}"
 log_info ""
 log_info "View it:  cat ${SUMMARY}"

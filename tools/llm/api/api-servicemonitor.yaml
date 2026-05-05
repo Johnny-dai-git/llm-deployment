@@ -6,17 +6,17 @@ metadata:
   labels:
     app: llm-api
 spec:
-  # Service 选择器:匹配 api-gateway-service(metadata.labels.app: llm-api)
+  # Service selector: match api-gateway-service (metadata.labels.app: llm-api)
   selector:
     matchLabels:
       app: llm-api
-  # 同 namespace 内查找
+  # Search within same namespace
   namespaceSelector:
     matchNames:
       - llm
   endpoints:
-    - port: http              # 引用 Service 的 named port
-      path: /metrics          # gateway.py 暴露的指标路径
-      interval: 15s           # 抓取频率
-      scrapeTimeout: 10s      # 单次抓取超时
+    - port: http              # Reference Service's named port
+      path: /metrics          # Metrics path exposed by gateway.py
+      interval: 15s           # Scrape interval
+      scrapeTimeout: 10s      # Single scrape timeout
       honorLabels: false

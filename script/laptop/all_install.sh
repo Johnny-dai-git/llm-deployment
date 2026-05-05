@@ -1,58 +1,59 @@
 #!/bin/bash
 set -e
-echo "===== 通用初始化 (all_install.sh) ====="
+echo "===== Common initialization (all_install.sh) ====="
 
 ##############################################
-# 0. 检测是否为 GPU 节点（用于跳过某些步骤）
+# 0. Detect if this is a GPU node (to skip certain steps)
 ##############################################
 IS_GPU_NODE=0
 if lspci | grep -i nvidia >/dev/null 2>&1; then
     IS_GPU_NODE=1
-    echo "⚠️ 检测到 NVIDIA GPU —— 将以 GPU 节点模式运行"
+    echo "⚠️ Detected NVIDIA GPU — running in GPU node mode"
 else
-    echo "ℹ️ 未检测到 GPU —— 以 CPU 节点模式运行"
+    echo "ℹ️ No GPU detected — running in CPU node mode"
 fi
 
 ##############################################
-# 1. 禁用 swap（所有节点都需要）
+# 1. Disable swap (required on all nodes)
 ##############################################
-echo "[1/6] 禁用 swap"
+echo "[1/6] Disable swap"
 sudo swapoff -a
 sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
 ##############################################
-# 2. GPU 节点：清理所有冲突的 NVIDIA apt 源
+# 2. GPU node: clean all conflicting NVIDIA apt sources
 ##############################################
 if [ "$IS_GPU_NODE" -eq 1 ]; then
-    echo "[2/6] GPU 节点：清理 NVIDIA apt 源，避免 apt Signed-By 冲突"
+    echo "[2/6] GPU node: clean NVIDIA apt sources, avoid apt Signed-By conflicts"
 
     sudo rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list
     sudo rm -f /etc/apt/sources.list.d/nvidia-docker.list
     sudo rm -f /etc/apt/sources.list.d/libnvidia-container.list
     sudo rm -f /etc/apt/sources.list.d/nvidia*.list
 
-    # 某些系统会放在 /etc/apt/sources.list
+    # Some systems have it in /etc/apt/sources.list
     sudo sed -i '/nvidia.github.io/d' /etc/apt/sources.list
 else
-    echo "[2/6] CPU 节点：无需清理 NVIDIA 源"
+    echo "[2/6] CPU node: no need to clean NVIDIA sources"
 fi
 
 ##############################################
-# 2.5 GPU 节点：安装 nvidia-container-toolkit
+# 2.5 GPU node: install nvidia-container-toolkit
 # ----------------------------------------------------------------
-# 必装。没有这个包就没有 nvidia-ctk / nvidia-container-runtime 二进制,
-# launch.sh Phase 2.5 里的 `nvidia-ctk runtime configure` 会跳过,
-# containerd 也就不知道 RuntimeClass 'nvidia' 怎么跑,
-# 任何 runtimeClassName: nvidia 的 pod (vllm-worker / dcgm-exporter)
-# 都会卡在 ContainerCreating 报 "no runtime for 'nvidia' is configured"。
+# Required. Without this package, nvidia-ctk / nvidia-container-runtime
+# binaries are missing, `nvidia-ctk runtime configure` in launch.sh
+# Phase 2.5 will skip, containerd won't know how to run RuntimeClass
+# 'nvidia', and any pod with runtimeClassName: nvidia (vllm-worker /
+# dcgm-exporter) will hang at ContainerCreating with "no runtime for
+# 'nvidia' is configured".
 #
-# 注意:nvidia-device-plugin (k8s DaemonSet) ≠ nvidia-container-toolkit
-# (宿主机包),两个都要,缺一不可。
+# Note: nvidia-device-plugin (k8s DaemonSet) ≠ nvidia-container-toolkit
+# (host package), both required, cannot omit either.
 ##############################################
 if [ "$IS_GPU_NODE" -eq 1 ]; then
-    echo "[2.5/6] GPU 节点：安装 nvidia-container-toolkit"
+    echo "[2.5/6] GPU node: install nvidia-container-toolkit"
     if ! command -v nvidia-ctk >/dev/null 2>&1; then
-        # 添加官方 repo (signed-by 与上一步清理过的旧源不冲突)
+        # Add official repo (signed-by doesn't conflict with old sources cleaned above)
         curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
             sudo gpg --batch --yes --dearmor \
                 -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
@@ -63,20 +64,20 @@ if [ "$IS_GPU_NODE" -eq 1 ]; then
 
         sudo apt-get update -y
         sudo apt-get install -y nvidia-container-toolkit
-        echo "  ✓ nvidia-container-toolkit 已安装: $(nvidia-ctk --version 2>/dev/null | head -1)"
+        echo "  ✓ nvidia-container-toolkit installed: $(nvidia-ctk --version 2>/dev/null | head -1)"
     else
-        echo "  ➡ nvidia-ctk 已存在,跳过安装"
+        echo "  ➡ nvidia-ctk already exists, skip installation"
     fi
 fi
 
 ##############################################
-# 3. 添加 Kubernetes 仓库（所有节点都需要）
+# 3. Add Kubernetes repository (required on all nodes)
 ##############################################
-echo "[3/6] 添加 Kubernetes 仓库 & 安装 kubeadm/kubelet/kubectl"
+echo "[3/6] Add Kubernetes repository & install kubeadm/kubelet/kubectl"
 
 sudo mkdir -p /etc/apt/keyrings
 
-# 安装 key，不会触发交互
+# Install key, non-interactive
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
     | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/k8s.gpg
 
@@ -84,117 +85,118 @@ curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
 echo "deb [signed-by=/etc/apt/keyrings/k8s.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /" \
     | sudo tee /etc/apt/sources.list.d/kubernetes.list >/dev/null
 
-# 更新
+# Update
 sudo apt update -y
 
-# 安装 k8s 组件
+# Install k8s components
 sudo apt install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 
 ##############################################
-# 4. 所有节点都装 + enable containerd + 写基础配置
+# 4. Install on all nodes + enable containerd + write base config
 # ----------------------------------------------------------------
-# 重要修正:k8s 1.24+ 已经移除 dockershim,无论 CPU 还是 GPU 节点,
-# 容器运行时都必须是 containerd(或其它 CRI 兼容运行时)。
-# 之前的版本在 GPU 节点上 stop+disable containerd 是错的,会导致
-# 系统重启后集群起不来。
+# Important note: k8s 1.24+ removed dockershim, container runtime
+# must be containerd (or other CRI-compatible) on both CPU and GPU
+# nodes. In earlier versions, stop+disable containerd on GPU nodes
+# was wrong and caused the cluster to fail after system reboot.
 #
-# 这里只写 SystemdCgroup=true 这个最小必需配置,nvidia runtime 由
-# launch.sh 的 Phase 2.5 在此之后用 `nvidia-ctk runtime configure`
-# 注入(因为只有 GPU 节点需要,且依赖 step 2.5 装的 nvidia-ctk)。
+# Only write minimum required config: SystemdCgroup=true here.
+# nvidia runtime is injected by launch.sh Phase 2.5 using
+# `nvidia-ctk runtime configure` (only GPU nodes need it, depends on
+# step 2.5 installing nvidia-ctk).
 ##############################################
-echo "[4/6] 安装并启用 containerd,写入基础配置(SystemdCgroup=true)"
+echo "[4/6] Install and enable containerd, write base config (SystemdCgroup=true)"
 if ! command -v containerd &> /dev/null; then
-    echo "➡ 安装 containerd"
+    echo "➡ Install containerd"
     sudo apt install -y containerd
 else
-    echo "➡ containerd 已安装,跳过安装步骤"
+    echo "➡ containerd already installed, skip installation"
 fi
 
-# 如果之前的脚本版本 disable 过 containerd,这里强制 enable 回来
-echo "➡ 启用 containerd 服务(开机自启)"
+# If previous script version disabled containerd, force enable it here
+echo "➡ Enable containerd service (auto-start on boot)"
 sudo systemctl enable containerd
 
-echo "➡ 写入 containerd 配置(systemd cgroup driver,K8s 推荐)"
+echo "➡ Write containerd config (systemd cgroup driver, K8s recommended)"
 sudo mkdir -p /etc/containerd
-# 只在配置缺失或 SystemdCgroup 不是 true 时重新生成,
-# 避免覆盖 launch.sh Phase 2.5 注入的 nvidia runtime
+# Regenerate config only if missing or SystemdCgroup is not true,
+# to avoid overwriting nvidia runtime injected by launch.sh Phase 2.5
 if [ ! -f /etc/containerd/config.toml ] || ! grep -q "SystemdCgroup = true" /etc/containerd/config.toml 2>/dev/null; then
     containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
     sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
     sudo systemctl restart containerd
-    echo "  ✓ 已写入 SystemdCgroup=true 并重启 containerd"
+    echo "  ✓ Wrote SystemdCgroup=true and restarted containerd"
 else
-    echo "  ✓ /etc/containerd/config.toml 已是 SystemdCgroup=true,保留"
+    echo "  ✓ /etc/containerd/config.toml already has SystemdCgroup=true, keep as is"
 fi
 
 ##############################################
-# 5. 配置 Docker（用于本地 build / pull image,可选)
+# 5. Configure Docker (for local build / pull image, optional)
 # ----------------------------------------------------------------
-# 注意:k8s 自身的容器运行时是 containerd(见 step 4),不是 Docker。
-# 这里装 Docker 主要是为了:
-#   - 本地 build-and-push.sh 构建 image
-#   - 兼容某些旧的开发流程
-# 如果你不需要这些用例,这步可以整个删掉。
+# Note: k8s container runtime is containerd (see step 4), not Docker.
+# Docker is installed here mainly for:
+#   - local build-and-push.sh image building
+#   - compatibility with some legacy dev workflows
+# If you don't need these, this step can be completely removed.
 ##############################################
-echo "[5/6] 配置 Docker（用于本地 build / pull image,可选)"
+echo "[5/6] Configure Docker (for local build / pull image, optional)"
 
-# 检查 Docker 是否已安装
+# Check if Docker is already installed
 if ! command -v docker &> /dev/null; then
-    echo "➡ Docker 未安装，正在安装 Docker..."
+    echo "➡ Docker not installed, installing Docker..."
     sudo apt update -y
     sudo apt install -y docker.io
 else
-    echo "➡ Docker 已安装"
+    echo "➡ Docker already installed"
 fi
 
-# 启动 Docker 服务
-echo "➡ 启动 Docker 服务"
+# Start Docker service
+echo "➡ Start Docker service"
 sudo systemctl start docker
 sudo systemctl enable docker
 
-# 将当前用户添加到 docker 组（如果未添加）
+# Add current user to docker group (if not already added)
 CURRENT_USER=${SUDO_USER:-$USER}
 if [ -z "$CURRENT_USER" ] || [ "$CURRENT_USER" = "root" ]; then
     CURRENT_USER=$(whoami)
 fi
 
 if ! groups "$CURRENT_USER" | grep -q docker; then
-    echo "➡ 将用户 $CURRENT_USER 添加到 docker 组"
+    echo "➡ Add user $CURRENT_USER to docker group"
     sudo usermod -aG docker "$CURRENT_USER"
-    echo "⚠️  用户已添加到 docker 组，但需要重新登录或运行 'newgrp docker' 才能生效"
-    echo "   或者运行: newgrp docker"
+    echo "⚠️  User added to docker group, but need to login again or run 'newgrp docker' to take effect"
+    echo "   or run: newgrp docker"
 else
-    echo "➡ 用户 $CURRENT_USER 已在 docker 组中"
+    echo "➡ User $CURRENT_USER already in docker group"
 fi
 
-# 验证 Docker 是否运行
+# Verify Docker is running
 if sudo systemctl is-active --quiet docker; then
-    echo "✓ Docker 服务正在运行"
+    echo "✓ Docker service is running"
 else
-    echo "⚠️  Docker 服务未运行，请检查"
+    echo "⚠️  Docker service is not running, please check"
 fi
 
 ##############################################
-# 6. 安装 Helm（所有节点都需要，用于 ArgoCD Image Updater）
+# 6. Install Helm (required on all nodes, for ArgoCD Image Updater)
 ##############################################
-echo "[6/6] 安装 Helm（所有节点）"
+echo "[6/6] Install Helm (all nodes)"
 if ! command -v helm >/dev/null 2>&1; then
-    echo "➡ Helm 未安装，正在安装 Helm..."
-    
-    # 方法1：使用官方安装脚本（推荐，适用于所有发行版）
+    echo "➡ Helm not installed, installing Helm..."
+
+    # Method 1: use official install script (recommended, works on all distros)
     curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    
-    # 验证安装
+
+    # Verify installation
     if command -v helm >/dev/null 2>&1; then
-        echo "✓ Helm 安装成功"
+        echo "✓ Helm installation successful"
         helm version
     else
-        echo "⚠️  Helm 安装可能失败，请检查"
+        echo "⚠️  Helm installation may have failed, please check"
     fi
 else
-    echo "➡ Helm 已安装"
+    echo "➡ Helm already installed"
     helm version
 fi
 
-echo "===== all_install.sh 执行完毕 ====="
+echo "===== all_install.sh completed ====="

@@ -9,11 +9,11 @@ POD_CIDR="192.168.0.0/16"
 
 CALICO_MANIFEST_URL="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml"
 
-# 等待/超时参数
+# Wait / timeout parameters
 WAIT_NODE_READY_SEC=180
 WAIT_CNI_FILE_SEC=120
 
-# CNI 文件（Calico）
+# CNI file (Calico)
 CNI_CONF_DIR="/etc/cni/net.d"
 CALICO_CNI_CONFLIST="${CNI_CONF_DIR}/10-calico.conflist"
 
@@ -25,7 +25,7 @@ die() { log "❌ $*"; exit 1; }
 
 need_root() {
   if [ "$(id -u)" -ne 0 ]; then
-    die "请用 root 运行：sudo $0"
+    die "Run as root: sudo $0"
   fi
 }
 
@@ -46,15 +46,15 @@ get_master_ip() {
 # System Prep
 # =========================
 ensure_deps() {
-  log ">>> 安装依赖（curl / net-tools / iptables / crictl）"
+  log ">>> Install dependencies (curl / net-tools / iptables / crictl)"
   apt-get update -y
   apt-get install -y curl net-tools iptables
-  # crictl 有时已自带；没有也不致命
+  # crictl sometimes already included; missing is not fatal
   command -v crictl >/dev/null 2>&1 || true
 }
 
 ensure_sysctl() {
-  log ">>> 配置内核参数（br_netfilter / ip_forward）"
+  log ">>> Configure kernel parameters (br_netfilter / ip_forward)"
   modprobe br_netfilter || true
   cat >/etc/sysctl.d/99-kubernetes.conf <<'EOF'
 net.bridge.bridge-nf-call-iptables  = 1
@@ -65,7 +65,7 @@ EOF
 }
 
 disable_swap() {
-  log ">>> 关闭 swap"
+  log ">>> Disable swap"
   swapoff -a || true
   sed -i '/\sswap\s/ s/^/#/' /etc/fstab || true
 }
@@ -74,82 +74,82 @@ disable_swap() {
 # Hard Reset (make every run clean)
 # =========================
 hard_reset_all() {
-  log ">>> HARD RESET: 彻底清理 Kubernetes/网络/证书/kubeconfig（每次运行都重来）"
+  log ">>> HARD RESET: completely clean Kubernetes/network/certs/kubeconfig (start fresh every run)"
 
-  # 1. 停止并 mask kubelet（防止它自动拉起 static pod）
-  log ">>> 1. 停止并 mask kubelet（防止自动拉起 static pod）..."
-  systemctl stop kubelet 2>/dev/null || log "  kubelet 未运行或已停止"
+  # 1. Stop and mask kubelet (prevent auto-start of static pods)
+  log ">>> 1. Stop and mask kubelet (prevent auto-start of static pods)..."
+  systemctl stop kubelet 2>/dev/null || log "  kubelet not running or already stopped"
   systemctl disable kubelet 2>/dev/null || true
   systemctl mask kubelet 2>/dev/null || true
-  
-  # 停止其他服务（但不停止 containerd，后面会 restart）
-  log ">>> 1.1 停止 docker（containerd 稍后 restart）..."
-  systemctl stop docker 2>/dev/null || log "  docker 未运行或已停止"
 
-  # 2. 杀掉所有 Kubernetes 相关进程（关键一步）
-  log ">>> 2. 杀掉所有 Kubernetes 相关进程..."
-  pkill -9 kube-apiserver 2>/dev/null || log "  kube-apiserver 进程不存在"
-  pkill -9 kube-controller-manager 2>/dev/null || log "  kube-controller-manager 进程不存在"
-  pkill -9 kube-scheduler 2>/dev/null || log "  kube-scheduler 进程不存在"
-  pkill -9 kube-proxy 2>/dev/null || log "  kube-proxy 进程不存在"
-  pkill -9 etcd 2>/dev/null || log "  etcd 进程不存在"
+  # Stop other services (but not containerd, restart later)
+  log ">>> 1.1 Stop docker (containerd restart later)..."
+  systemctl stop docker 2>/dev/null || log "  docker not running or already stopped"
 
-  # 3. 删除 static pod manifests（防止 kubelet 复活它们）
-  log ">>> 3. 删除 static pod manifests..."
-  rm -rf /etc/kubernetes/manifests/* 2>/dev/null || log "  manifests 目录不存在或已清空"
+  # 2. Kill all Kubernetes related processes (critical step)
+  log ">>> 2. Kill all Kubernetes related processes..."
+  pkill -9 kube-apiserver 2>/dev/null || log "  kube-apiserver process not found"
+  pkill -9 kube-controller-manager 2>/dev/null || log "  kube-controller-manager process not found"
+  pkill -9 kube-scheduler 2>/dev/null || log "  kube-scheduler process not found"
+  pkill -9 kube-proxy 2>/dev/null || log "  kube-proxy process not found"
+  pkill -9 etcd 2>/dev/null || log "  etcd process not found"
 
-  # 4. 等待进程完全终止
+  # 3. Delete static pod manifests (prevent kubelet from reviving them)
+  log ">>> 3. Delete static pod manifests..."
+  rm -rf /etc/kubernetes/manifests/* 2>/dev/null || log "  manifests directory not found or already empty"
+
+  # 4. Wait for processes to terminate fully
   sleep 2
 
-  # 5. kubeadm reset（现在应该可以安全执行）
-  log ">>> 4. 执行 kubeadm reset..."
+  # 5. kubeadm reset (should be safe now)
+  log ">>> 4. Run kubeadm reset..."
   kubeadm reset -f || {
-    log "⚠️  kubeadm reset 遇到错误，继续清理..."
+    log "⚠️  kubeadm reset encountered error, continuing cleanup..."
   }
 
-  # 6. 清空 k8s 状态数据
-  log ">>> 5. 清空 Kubernetes 状态数据..."
+  # 6. Clear k8s state data
+  log ">>> 5. Clear Kubernetes state data..."
   rm -rf /etc/kubernetes /var/lib/kubelet /var/lib/etcd || true
 
-  # 7. 清 CNI / Calico 残留
-  log ">>> 6. 清理 CNI / Calico 残留..."
+  # 7. Clean CNI / Calico remnants
+  log ">>> 6. Clean CNI / Calico remnants..."
   rm -rf /var/run/calico /etc/cni/net.d /opt/cni/bin /var/lib/cni /var/lib/calico || true
 
-  # 8. 清理 kubeconfig（关键：避免旧证书导致 x509 unknown authority）
-  log ">>> 7. 清理 kubeconfig..."
+  # 8. Clean kubeconfig (critical: avoid old certs causing x509 unknown authority)
+  log ">>> 7. Clean kubeconfig..."
   rm -rf /root/.kube || true
   rm -rf /home/*/.kube || true
 
-  # 9. 重新启动 containerd 并确保 socket 就绪（准备干净 init）
-  log ">>> 8. 重新加载 systemd 并重启 containerd..."
-  systemctl daemon-reexec 2>/dev/null || log "  daemon-reexec 执行完成"
+  # 9. Restart containerd and ensure socket is ready (prepare for clean init)
+  log ">>> 8. Reload systemd and restart containerd..."
+  systemctl daemon-reexec 2>/dev/null || log "  daemon-reexec complete"
   systemctl daemon-reload
-  systemctl restart containerd || log "  containerd 重启失败（可能未安装）"
+  systemctl restart containerd || log "  containerd restart failed (may not be installed)"
   systemctl enable containerd 2>/dev/null || true
-  
-  # 9.1 等待 containerd socket 就绪（关键）
-  log ">>> 8.1 等待 containerd socket 就绪..."
+
+  # 9.1 Wait for containerd socket to be ready (critical)
+  log ">>> 8.1 Wait for containerd socket to be ready..."
   local end=$((SECONDS + 30))
   while [ $SECONDS -lt $end ]; do
     [[ -S /var/run/containerd/containerd.sock ]] && break
     sleep 1
   done
-  [[ -S /var/run/containerd/containerd.sock ]] || die "containerd.sock 不存在：/var/run/containerd/containerd.sock"
+  [[ -S /var/run/containerd/containerd.sock ]] || die "containerd.sock missing: /var/run/containerd/containerd.sock"
 
-  # 10. 最终确认端口（可选，但有助于诊断）
-  log ">>> 9. 检查关键端口是否已释放..."
+  # 10. Final port check (optional, but helps with diagnosis)
+  log ">>> 9. Check if critical ports are released..."
   if command -v ss >/dev/null 2>&1; then
     if ss -lntp | grep -qE ':(6443|2379|2380)\b'; then
-      log "  ⚠️  端口仍被占用："
+      log "  ⚠️  Ports still in use:"
       ss -lntp | grep -E ':(6443|2379|2380)\b' || true
     else
-      log "  ✔ 关键端口已释放（6443, 2379, 2380）"
+      log "  ✔ Critical ports released (6443, 2379, 2380)"
     fi
   else
-    log "  ss 未安装，跳过端口检查"
+    log "  ss not installed, skip port check"
   fi
 
-  log ">>> HARD RESET 完成"
+  log ">>> HARD RESET complete"
 }
 
 # =========================
@@ -161,13 +161,13 @@ hard_reset_all() {
 
 kubeadm_init() {
   local master_ip="$1"
-  
-  # 在 init 之前 unmask kubelet（现在可以安全启动）
-  log ">>> 准备 kubeadm init：unmask 并启动 kubelet..."
+
+  # Unmask kubelet before init (now safe to start)
+  log ">>> Prepare kubeadm init: unmask and start kubelet..."
   systemctl unmask kubelet 2>/dev/null || true
   systemctl enable kubelet 2>/dev/null || true
   systemctl start kubelet 2>/dev/null || true
-  
+
   log ">>> kubeadm init (node=${NODE_NAME}, endpoint=${master_ip})"
   kubeadm init \
     --node-name="${NODE_NAME}" \
@@ -176,7 +176,7 @@ kubeadm_init() {
 }
 
 setup_kubeconfig_root() {
-  log ">>> 配置 kubectl（root）"
+  log ">>> Configure kubectl (root)"
   mkdir -p /root/.kube
   cp -f /etc/kubernetes/admin.conf /root/.kube/config
   export KUBECONFIG=/root/.kube/config
@@ -194,7 +194,7 @@ setup_kubeconfig_user() {
   local user="$1"
   local home
   home="$(eval echo "~${user}")"
-  log ">>> 配置 kubectl（用户：${user}, home=${home}）"
+  log ">>> Configure kubectl (user: ${user}, home=${home})"
   mkdir -p "${home}/.kube"
   cp -f /etc/kubernetes/admin.conf "${home}/.kube/config"
   chown -R "${user}:${user}" "${home}/.kube"
@@ -204,45 +204,45 @@ setup_kubeconfig_user() {
 # CNI (Calico)
 # =========================
 install_calico() {
-  log ">>> 安装 Calico CNI"
+  log ">>> Install Calico CNI"
   kubectl apply -f "${CALICO_MANIFEST_URL}"
 }
 
 wait_for_cni_file() {
-  log ">>> 等待 Calico 写入 CNI 配置：${CALICO_CNI_CONFLIST}"
+  log ">>> Wait for Calico to write CNI config: ${CALICO_CNI_CONFLIST}"
   local end=$((SECONDS + WAIT_CNI_FILE_SEC))
   while [ $SECONDS -lt $end ]; do
-    [[ -f "${CALICO_CNI_CONFLIST}" ]] && { log "✔ CNI 配置已出现"; return 0; }
+    [[ -f "${CALICO_CNI_CONFLIST}" ]] && { log "✔ CNI config appeared"; return 0; }
     sleep 2
   done
-  log "⚠️  未在超时时间内发现 CNI conflist（继续执行，后续 Node Ready 可能仍会成功）"
+  log "⚠️  CNI conflist not found within timeout (continuing, Node Ready may still succeed)"
   return 0
 }
 
 kick_cri_and_kubelet() {
-  log ">>> 重启 containerd + kubelet"
+  log ">>> Restart containerd + kubelet"
   systemctl restart containerd || true
   systemctl restart kubelet || true
 }
 
 wait_for_node_ready() {
-  log ">>> 等待 Node Ready"
+  log ">>> Wait for Node Ready"
   local end=$((SECONDS + WAIT_NODE_READY_SEC))
   while [ $SECONDS -lt $end ]; do
     if kubectl get nodes "${NODE_NAME}" 2>/dev/null | awk 'NR==2{print $2}' | grep -q '^Ready$'; then
-      log "✔ Node 已 Ready"
+      log "✔ Node is Ready"
       return 0
     fi
     sleep 2
   done
-  log "⚠️  Node 未在超时时间内 Ready（打印诊断）"
+  log "⚠️  Node not Ready within timeout (printing diagnostics)"
   kubectl get nodes -o wide || true
   kubectl describe node "${NODE_NAME}" | sed -n '/Conditions:/,/Addresses:/p' || true
   return 1
 }
 
 remove_controlplane_taint_for_single_node() {
-  log ">>> 单节点：移除 control-plane taint"
+  log ">>> Single node: remove control-plane taint"
   kubectl taint nodes "${NODE_NAME}" node-role.kubernetes.io/control-plane:NoSchedule- || true
   kubectl taint nodes "${NODE_NAME}" node-role.kubernetes.io/master:NoSchedule- || true
 }
@@ -251,7 +251,7 @@ remove_controlplane_taint_for_single_node() {
 # Join command
 # =========================
 print_join_cmd() {
-  log ">>> join 命令（worker 用）"
+  log ">>> Join command (for workers)"
   kubeadm token create --print-join-command
 }
 
@@ -260,7 +260,7 @@ print_join_cmd() {
 # =========================
 need_root
 
-log "===== system 节点：一键重置并重建（每次运行都清空再来）====="
+log "===== system node: one-click reset and rebuild (start fresh every run) ====="
 
 ensure_deps
 ensure_sysctl
@@ -269,12 +269,12 @@ disable_swap
 hard_reset_all
 
 MASTER_IP="$(get_master_ip)"
-log ">>> 使用主节点 IP: ${MASTER_IP}"
+log ">>> Using master node IP: ${MASTER_IP}"
 
 kubeadm_init "${MASTER_IP}"
 setup_kubeconfig_root
 
-# user kubeconfig（提前写，避免后续手动修证书）
+# user kubeconfig (write early, avoid manual cert fixes later)
 CURRENT_USER="$(detect_current_user)"
 setup_kubeconfig_user "${CURRENT_USER}"
 
@@ -288,5 +288,5 @@ remove_controlplane_taint_for_single_node
 
 print_join_cmd
 
-log "===== 完成 ====="
-log ">>> 检查：kubectl get nodes && kubectl get pods -A"
+log "===== Done ====="
+log ">>> Check: kubectl get nodes && kubectl get pods -A"

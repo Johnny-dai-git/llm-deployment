@@ -1,39 +1,39 @@
 # prometheus-adapter Helm Values
 #
-# 作用:把 Prometheus 里的指标"翻译"成 K8s custom metrics API 能读的格式,
-#       这样 HPA 就能基于 vllm:num_requests_waiting 之类的业务指标做扩缩。
+# Purpose: "translate" metrics in Prometheus into K8s custom metrics API readable format,
+#          so HPA can scale based on business metrics like vllm:num_requests_waiting.
 #
-# 没有这个组件,K8s HPA 只能用 metrics-server 提供的 CPU / 内存这些资源指标。
+# Without this component, K8s HPA can only use resource metrics (CPU / memory) from metrics-server.
 
-# Prometheus 数据源
-# 注意 service 名跟 Helm release 名相关:
+# Prometheus data source
+# Note: service name is related to Helm release name:
 #   helm upgrade --install monitoring prometheus-community/kube-prometheus-stack
-#   → service 叫 monitoring-kube-prometheus-prometheus
+#   → service is called monitoring-kube-prometheus-prometheus
 #
-# ⚠️ path 必须配合 prometheus 启动参数 --web.route-prefix=/prometheus 一起设。
-# 不加 path 时,adapter 会 GET /api/v1/series 拿到 404,然后 HPA 永远是 unknown,
-# 表现是 vllm-worker 副本怎么打负载都不扩容。kube-prometheus-stack 默认就用了
-# /prometheus 前缀(为了配合 ingress 反代),所以这里必须加。
+# ⚠️ path must be set together with prometheus startup parameter --web.route-prefix=/prometheus.
+# Without path, adapter will GET /api/v1/series get 404, then HPA is always unknown,
+# showing vllm-worker replicas don't scale no matter the load. kube-prometheus-stack uses
+# /prometheus prefix by default (to work with ingress reverse proxy), so path must be set.
 prometheus:
   url: http://monitoring-kube-prometheus-prometheus.monitoring.svc
   port: 9090
   path: /prometheus
 
-# 让 prometheus-adapter Pod 调度到 system 节点
+# Schedule prometheus-adapter Pod to system nodes
 nodeSelector:
   system: "true"
 
-# 自定义指标规则
+# Custom metric rules
 rules:
-  default: false   # 关掉默认那一堆,只暴露我们要的
+  default: false   # Disable default set, only expose what we need
 
   custom:
     # =========================================================
-    # vLLM 队列深度 → 给 vllm-worker HPA 用
+    # vLLM queue depth → for vllm-worker HPA
     # =========================================================
-    # 把 vllm:num_requests_waiting 暴露成 Pod 级 metric:
+    # Expose vllm:num_requests_waiting as Pod-level metric:
     #   GET /apis/custom.metrics.k8s.io/v1beta1/namespaces/llm/pods/*/vllm_num_requests_waiting
-    # HPA 配置时引用 metric 名 vllm_num_requests_waiting
+    # When configuring HPA, reference metric name vllm_num_requests_waiting
     - seriesQuery: 'vllm:num_requests_waiting{namespace!="",pod!=""}'
       resources:
         overrides:
@@ -47,7 +47,7 @@ rules:
       metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
 
     # =========================================================
-    # vLLM 正在运行的请求数 → 也暴露,方便 dashboard / 未来扩展
+    # vLLM number of running requests → also expose, convenient for dashboard / future extension
     # =========================================================
     - seriesQuery: 'vllm:num_requests_running{namespace!="",pod!=""}'
       resources:
@@ -61,12 +61,12 @@ rules:
         as: "vllm_${1}"
       metricsQuery: 'avg_over_time(<<.Series>>{<<.LabelMatchers>>}[2m])'
 
-# 暴露 ServiceMonitor 给 Prometheus 抓 prometheus-adapter 自己的指标
-# (元监控:监控你的监控组件)
+# Expose ServiceMonitor to Prometheus to scrape prometheus-adapter's own metrics
+# (meta-monitoring: monitor your monitoring components)
 serviceMonitor:
   enabled: true
 
-# 资源请求(适配 prometheus-adapter 自身负载)
+# Resource requests (adapt to prometheus-adapter's own workload)
 resources:
   requests:
     cpu: "50m"

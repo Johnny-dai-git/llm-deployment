@@ -1,26 +1,26 @@
 #!/bin/bash
 # ================================================================
-# 07_mig_isolation.sh — MIG 硬件隔离 + 多副本并发演示
+# 07_mig_isolation.sh — MIG hardware isolation + multi-replica concurrency demo
 # ----------------------------------------------------------------
-# 这是 Lambda A100 / GCP_BRANCH 才有意义的测试 —— 用 MIG 7 个 1g.5gb
-# 实例做硬件隔离的真正卖点在于:
-#   1. 多个 vllm-worker pod 物理上跑在不同 MIG 实例上
-#   2. 它们的 GPU 用量 / 内存彼此完全隔离 (no noisy neighbor)
-#   3. HPA 可以扩到 7 副本(单 A100 的最大并行度)
+# This test is meaningful only on Lambda A100 / GCP_BRANCH —— using MIG with
+# 7× 1g.5gb instances. The real selling point of hardware isolation is:
+#   1. Multiple vllm-worker pods physically run on different MIG instances
+#   2. Their GPU usage / memory completely isolated from each other (no noisy neighbor)
+#   3. HPA can scale to 7 replicas (max parallelism for single A100)
 #
-# 测试流程:
-#   阶段 0  起始快照 (有几个 MIG 在跑 work)
-#   阶段 1  打 60 秒高并发负载 (concurrency=20)
-#   阶段 2  每 10 秒采一次 active MIG count + 实际 pod-MIG 绑定
-#   阶段 3  最终判断:
-#           - HPA 是不是从 1 扩到了 N (>1) 副本
-#           - DCGM 是不是看到 N 个 MIG 实例同时在干活
-#           - 这些 MIG 实例的 GPU_I_ID 是不是 distinct (硬件隔离证据)
+# Test flow:
+#   Phase 0  Initial snapshot (how many MIGs are active)
+#   Phase 1  Send 60 seconds of high concurrency load (concurrency=20)
+#   Phase 2  Sample every 10 seconds: active MIG count + actual pod-MIG bindings
+#   Phase 3  Final verdict:
+#           - Did HPA scale from 1 to N (>1) replicas?
+#           - Did DCGM observe N MIG instances doing work simultaneously?
+#           - Are these MIG instances' GPU_I_IDs distinct? (evidence of hardware isolation)
 #
-# 输出:
-#   07_mig.log              人类可读 timeline
-#   07_mig_timeline.csv     每 10 秒一行: ts, replicas, active_mig_count, bindings
-#   07_mig.json             最终汇总 (供 SUMMARY.md 引用)
+# Output:
+#   07_mig.log              Human-readable timeline
+#   07_mig_timeline.csv     One line every 10 sec: ts, replicas, active_mig_count, bindings
+#   07_mig.json             Final summary (for SUMMARY.md reference)
 # ================================================================
 set -uo pipefail
 
@@ -32,32 +32,32 @@ LOG="${RESULTS_DIR}/07_mig.log"
 JSON="${RESULTS_DIR}/07_mig.json"
 TIMELINE="${RESULTS_DIR}/07_mig_timeline.csv"
 
-LOAD_DURATION="${MIG_LOAD_DURATION:-90}"          # 默认 90s 高负载
-LOAD_CONCURRENCY="${MIG_LOAD_CONCURRENCY:-20}"    # 默认 20 并发(吃满 7 MIG 够了)
+LOAD_DURATION="${MIG_LOAD_DURATION:-90}"          # default 90s high load
+LOAD_CONCURRENCY="${MIG_LOAD_CONCURRENCY:-20}"    # default 20 concurrency (enough to saturate 7 MIG)
 
 log_step "07 MIG ISOLATION (Lambda A100 only)"
 log_info "endpoint: ${TEST_ENDPOINT}"
 log_info "load: ${LOAD_DURATION}s × concurrency=${LOAD_CONCURRENCY}"
 echo
 
-# ============ 前置检查 ============
-# 这个测试只在 MIG-aware 环境(DCGM 暴露 GPU_I_ID label)有意义。
-log_info "检查 DCGM 是否在暴露 per-MIG 指标..."
+# ============ Pre-check ============
+# This test is meaningful only in MIG-aware environment (DCGM exposing GPU_I_ID label)
+log_info "Checking if DCGM is exposing per-MIG metrics..."
 PROBE=$(prometheus_query 'count(count by (GPU_I_ID) (DCGM_FI_DEV_SM_CLOCK))' \
         | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null)
 if [ "${PROBE:-0}" -lt 2 ]; then
-    log_warn "Prometheus 看不到多个 GPU_I_ID label,这台机器没用 MIG 或 DCGM 没装好"
-    log_warn "跳过 MIG isolation 测试"
+    log_warn "Prometheus cannot see multiple GPU_I_ID labels, machine not using MIG or DCGM not configured properly"
+    log_warn "Skipping MIG isolation test"
     cat > "${JSON}" <<EOF
 {"test":"07_mig_isolation","status":"skipped","reason":"no MIG-aware DCGM metrics found (GPU_I_ID label missing)"}
 EOF
     exit 0
 fi
-log_info "✓ DCGM 看到 ${PROBE} 个 MIG 实例"
+log_info "✓ DCGM observes ${PROBE} MIG instances"
 echo
 
-# ============ 阶段 0: 起始快照 ============
-log_info "==== 阶段 0: 起始快照 ===="
+# ============ Phase 0: Initial snapshot ============
+log_info "==== Phase 0: Initial snapshot ===="
 INIT_REPLICAS=$(kubectl get deployment -n llm vllm-worker -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 1)
 INIT_ACTIVE=$(count_active_mig_instances 1m)
 INIT_BINDINGS=$(list_mig_pod_bindings | wc -l | tr -d ' ')
@@ -67,14 +67,14 @@ log_info "  active MIG (last 1min):   ${INIT_ACTIVE}"
 log_info "  MIG↔pod bindings:         ${INIT_BINDINGS}"
 echo
 
-# ============ 阶段 1+2: 跑负载,每 10 秒采样 ============
-log_info "==== 阶段 1: 启动 ${LOAD_CONCURRENCY} 并发负载 (持续 ${LOAD_DURATION}s) ===="
+# ============ Phase 1+2: Run load, sample every 10 seconds ============
+log_info "==== Phase 1: Start ${LOAD_CONCURRENCY} concurrency load (duration ${LOAD_DURATION}s) ===="
 
-# 后台 timeline 采集 (每 10 秒)
+# Background timeline collection (every 10 seconds)
 {
     echo "timestamp,elapsed_sec,replicas,ready_replicas,active_mig,bindings_count,bindings_detail"
     start_ts=$(date +%s)
-    end_ts=$((start_ts + LOAD_DURATION + 30))   # 多 30 秒看 HPA 缩容前的状态
+    end_ts=$((start_ts + LOAD_DURATION + 30))   # Extra 30 seconds to observe state before HPA scale-down
     while [ "$(date +%s)" -lt "${end_ts}" ]; do
         now=$(date +%s)
         elapsed=$((now - start_ts))
@@ -90,25 +90,25 @@ log_info "==== 阶段 1: 启动 ${LOAD_CONCURRENCY} 并发负载 (持续 ${LOAD_
 TIMELINE_PID=$!
 trap "kill ${TIMELINE_PID} 2>/dev/null || true" EXIT
 
-# 跑负载 (随机选 prompt 避免 prefix cache 全命中)
+# Run load (randomly sample prompts to avoid prefix cache perfect hits)
 PROMPTS_FILE="${SCRIPT_DIR}/data/prompts.txt"
 USE_RANDOM=0
 if [ -f "${PROMPTS_FILE}" ]; then
     USE_RANDOM=1
 fi
-log_info "  随机 prompt: $([ ${USE_RANDOM} -eq 1 ] && echo yes || echo "no (固定 prompt)")"
+log_info "  random prompts: $([ ${USE_RANDOM} -eq 1 ] && echo yes || echo "no (fixed prompt)")"
 
 load_start_ts=$(date +%s)
 (
     pids=()
     end=$((load_start_ts + LOAD_DURATION))
     while [ "$(date +%s)" -lt "${end}" ]; do
-        # 维持 LOAD_CONCURRENCY 个并发
+        # Maintain LOAD_CONCURRENCY concurrent requests
         while [ ${#pids[@]} -lt ${LOAD_CONCURRENCY} ] && [ "$(date +%s)" -lt "${end}" ]; do
             if [ ${USE_RANDOM} -eq 1 ]; then
                 P=$(shuf -n 1 "${PROMPTS_FILE}" 2>/dev/null || echo "tell me a story about an AI")
             else
-                P="生成一个完整的故事,要求情节起伏,人物丰满,500 字左右"
+                P="Generate a complete story with vivid plot and well-developed characters, around 500 words"
             fi
             (
                 curl -fsS --max-time 60 \
@@ -121,7 +121,7 @@ load_start_ts=$(date +%s)
             ) &
             pids+=($!)
         done
-        # 清理已完成的
+        # Clean up completed processes
         new_pids=()
         for pid in "${pids[@]}"; do
             kill -0 "$pid" 2>/dev/null && new_pids+=("$pid")
@@ -135,46 +135,46 @@ LOAD_PID=$!
 
 wait ${LOAD_PID} 2>/dev/null || true
 load_end_ts=$(date +%s)
-log_info "==== 阶段 2: 负载结束 (用时 $((load_end_ts - load_start_ts))s),再观察 30s ===="
+log_info "==== Phase 2: Load complete (duration $((load_end_ts - load_start_ts))s), observing 30s ===="
 sleep 30
 
 kill ${TIMELINE_PID} 2>/dev/null || true
 wait ${TIMELINE_PID} 2>/dev/null || true
 
-# ============ 阶段 3: 分析 ============
-log_info "==== 阶段 3: 分析 ===="
+# ============ Phase 3: Analysis ============
+log_info "==== Phase 3: Analysis ===="
 
-# 从 timeline 找峰值
+# Find peak values from timeline
 PEAK_REPLICAS=$(awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ {if ($3 > m) m = $3} END {print m+0}' "${TIMELINE}")
 PEAK_ACTIVE_MIG=$(awk -F, 'NR>1 && $5 ~ /^[0-9]+$/ {if ($5 > m) m = $5} END {print m+0}' "${TIMELINE}")
 PEAK_BINDINGS=$(awk -F, 'NR>1 && $6 ~ /^[0-9]+$/ {if ($6 > m) m = $6} END {print m+0}' "${TIMELINE}")
 
-# 测试期间所有出现过的 MIG GPU_I_ID(从 bindings 列里抽出)
+# All MIG GPU_I_IDs observed during test (extracted from bindings column)
 DISTINCT_MIG_IDS=$(awk -F, 'NR>1 {print $7}' "${TIMELINE}" \
     | tr '|' '\n' | tr -d '"' \
     | grep -oE 'MIG-[0-9]+' | sort -u | tr '\n' ' ')
 DISTINCT_MIG_COUNT=$(echo "${DISTINCT_MIG_IDS}" | wc -w | tr -d ' ')
 
-log_info "  peak replicas:            ${PEAK_REPLICAS} (起始 ${INIT_REPLICAS})"
+log_info "  peak replicas:            ${PEAK_REPLICAS} (initial ${INIT_REPLICAS})"
 log_info "  peak active MIG count:    ${PEAK_ACTIVE_MIG}"
 log_info "  peak MIG↔pod bindings:    ${PEAK_BINDINGS}"
 log_info "  distinct MIG IDs seen:    ${DISTINCT_MIG_COUNT} → [${DISTINCT_MIG_IDS}]"
 
-# 判断
+# Verdict
 if [ "${PEAK_REPLICAS}" -gt "${INIT_REPLICAS}" ] && [ "${PEAK_BINDINGS}" -gt 1 ]; then
-    VERDICT="✅ HPA 扩容 + 多 MIG 并行使用,硬件隔离生效"
+    VERDICT="✅ HPA scaled + multiple MIGs in parallel, hardware isolation effective"
     PASS=true
 elif [ "${PEAK_BINDINGS}" -gt 1 ]; then
-    VERDICT="⚠️ 多 MIG 在用但 HPA 没扩(可能 minReplicas 已经 > 1 或负载不够)"
+    VERDICT="⚠️ Multiple MIGs in use but HPA did not scale (minReplicas already > 1 or load insufficient)"
     PASS=true
 else
-    VERDICT="❌ 只看到 1 个 MIG 在用,无法证明硬件隔离 (HPA 没触发?)"
+    VERDICT="❌ Only 1 MIG observed, cannot prove hardware isolation (HPA not triggered?)"
     PASS=false
 fi
 log_info "  verdict: ${VERDICT}"
 echo
 
-# 汇总 JSON
+# Summary JSON
 {
     echo "{"
     echo "  \"test\": \"07_mig_isolation\","
@@ -201,7 +201,7 @@ echo
     echo
     echo "verdict: ${VERDICT}"
     echo
-    echo "(timeline 在 ${TIMELINE},每 10 秒一行)"
+    echo "(Timeline at ${TIMELINE}, one line every 10 seconds)"
 } >> "${LOG}"
 
 log_info "===== Summary ====="

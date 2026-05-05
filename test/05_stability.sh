@@ -1,16 +1,16 @@
 #!/bin/bash
 # ================================================================
-# 05_stability.sh — 稳定性测试 (持续负载)
+# 05_stability.sh — Stability test (sustained load)
 # ----------------------------------------------------------------
-# 在中等负载下持续运行 N 分钟,期间:
-#   - 持续发推理请求
-#   - 周期性 snapshot 集群状态
-#   - 监控错误率、pod restart 次数
+# Run continuously under medium load for N minutes, during which:
+#   - Continuously send inference requests
+#   - Periodically snapshot cluster state
+#   - Monitor error rate, pod restart count
 #
-# 通过条件:
-#   - 错误率 < 1%
-#   - vllm-worker RESTARTS 没增长
-#   - 内存没持续往上爬(简单看 first vs last 快照)
+# Pass conditions:
+#   - Error rate < 1%
+#   - vllm-worker RESTARTS did not increase
+#   - Memory not continuously climbing (simple first vs last snapshot check)
 # ================================================================
 set -uo pipefail
 
@@ -22,19 +22,19 @@ LOG="${RESULTS_DIR}/05_stability.log"
 JSON="${RESULTS_DIR}/05_stability.json"
 SNAPSHOTS="${RESULTS_DIR}/05_stability_snapshots.txt"
 
-DURATION_SEC="${STABILITY_DURATION:-300}"   # 默认 5 分钟
+DURATION_SEC="${STABILITY_DURATION:-300}"   # Default 5 minutes
 CONCURRENCY="${STABILITY_CONCURRENCY:-4}"
 SNAPSHOT_INTERVAL=30
 
-log_step "05 STABILITY (持续 ${DURATION_SEC}s, 并发 ${CONCURRENCY})"
-log_info "可通过 STABILITY_DURATION=1800 跑 30 分钟版"
+log_step "05 STABILITY (sustained ${DURATION_SEC}s at concurrency ${CONCURRENCY})"
+log_info "Run 30-minute version with: STABILITY_DURATION=1800"
 echo
 
-# 起始 RESTARTS 数
+# Initial RESTARTS count
 INITIAL_RESTARTS=$(kubectl get pods -n llm -l app=vllm-worker -o jsonpath='{.items[*].status.containerStatuses[0].restartCount}' 2>/dev/null | tr ' ' '+' | bc 2>/dev/null || echo 0)
-log_info "起始 vllm-worker RESTARTS 总和: ${INITIAL_RESTARTS}"
+log_info "Initial vllm-worker total RESTARTS: ${INITIAL_RESTARTS}"
 
-# 后台:周期 snapshot
+# Background: periodic snapshot
 {
     snapshot_cluster "${SNAPSHOTS}"
 } &
@@ -47,18 +47,18 @@ SNAP_PID=$!
 SNAP_LOOP_PID=$!
 trap "kill ${SNAP_LOOP_PID} 2>/dev/null || true" EXIT
 
-# 跑负载,每个请求记录成功/失败
+# Run load, record success/failure for each request
 ERR_FILE="${RESULTS_DIR}/05_errors.log"
 OK_COUNT_FILE="${RESULTS_DIR}/05_ok_count"
 ERR_COUNT_FILE="${RESULTS_DIR}/05_err_count"
 echo 0 > "${OK_COUNT_FILE}"
 echo 0 > "${ERR_COUNT_FILE}"
 
-PROMPT="简单介绍一下深度学习"
+PROMPT="Brief introduction to deep learning"
 load_start=$(date +%s)
 end=$((load_start + DURATION_SEC))
 
-log_info "开始跑负载,每分钟打一个进度提示..."
+log_info "Starting load, progress indicator every minute..."
 last_progress=${load_start}
 
 (
@@ -73,7 +73,7 @@ last_progress=${load_start}
                         --arg content "${PROMPT}" \
                         '{model:$model, messages:[{role:"user",content:$content}], max_tokens:80}')" \
                     "${TEST_ENDPOINT}" > /dev/null 2>&1; then
-                    # 注意:bash 算数操作 race:用文件锁简单处理
+                    # Note: bash arithmetic has race conditions; use file lock for simple handling
                     flock "${OK_COUNT_FILE}" -c "v=\$(cat ${OK_COUNT_FILE}); echo \$((v+1)) > ${OK_COUNT_FILE}"
                 else
                     flock "${ERR_COUNT_FILE}" -c "v=\$(cat ${ERR_COUNT_FILE}); echo \$((v+1)) > ${ERR_COUNT_FILE}"
@@ -82,7 +82,7 @@ last_progress=${load_start}
             ) &
             pids+=($!)
         done
-        # 清理已完成
+        # Clean up completed
         new_pids=()
         for pid in "${pids[@]}"; do
             kill -0 "$pid" 2>/dev/null && new_pids+=("$pid")
@@ -90,14 +90,14 @@ last_progress=${load_start}
         pids=("${new_pids[@]}")
         sleep 0.2
 
-        # 进度
+        # Progress
         now=$(date +%s)
         if [ $((now - last_progress)) -ge 60 ]; then
             ok=$(cat "${OK_COUNT_FILE}")
             err=$(cat "${ERR_COUNT_FILE}")
             elapsed=$((now - load_start))
             remaining=$((end - now))
-            log_info "  t=${elapsed}s, OK=${ok} ERR=${err}, 剩 ${remaining}s"
+            log_info "  t=${elapsed}s, OK=${ok} ERR=${err}, remaining ${remaining}s"
             last_progress=${now}
         fi
     done
@@ -107,11 +107,11 @@ last_progress=${load_start}
 load_end=$(date +%s)
 wall=$((load_end - load_start))
 
-# 最后再 snapshot 一次
+# Final snapshot
 kill ${SNAP_LOOP_PID} 2>/dev/null || true
 snapshot_cluster "${SNAPSHOTS}"
 
-# 终态 RESTARTS
+# Final RESTARTS
 FINAL_RESTARTS=$(kubectl get pods -n llm -l app=vllm-worker -o jsonpath='{.items[*].status.containerStatuses[0].restartCount}' 2>/dev/null | tr ' ' '+' | bc 2>/dev/null || echo 0)
 RESTART_DELTA=$((FINAL_RESTARTS - INITIAL_RESTARTS))
 
@@ -120,12 +120,12 @@ ERR=$(cat "${ERR_COUNT_FILE}")
 TOTAL=$((OK + ERR))
 ERR_RATE=$(awk -v ok=${OK} -v err=${ERR} 'BEGIN {if (ok+err==0) print 0; else printf "%.4f", err/(ok+err)*100 }')
 
-# 通过条件
+# Pass conditions
 PASS=true
 [ "${ERR_RATE}" != "0.0000" ] && [ "$(echo "${ERR_RATE} > 1.0" | bc -l)" -eq 1 ] && PASS=false
 [ "${RESTART_DELTA}" -gt 0 ] && PASS=false
 
-# 写 JSON
+# Write JSON
 cat > "${JSON}" <<EOF
 {
   "test": "05_stability",

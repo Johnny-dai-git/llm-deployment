@@ -1,15 +1,16 @@
 # kube-prometheus-stack Helm Values
-# Demo 场景：子路径 + Ingress + IP 可变
+# Demo scenario: subpath + Ingress + variable IP
 #
 # ============================================================================
-# Eviction protection (双管齐下):
+# Eviction protection (two-pronged approach):
 #   1. priorityClassName: monitoring-critical (value=100000)
-#      → 节点压力下,kubelet 优先 evict workload pod 不动监控
+#      → Under node pressure, kubelet prioritizes evicting workload pods, not monitoring
 #   2. requests == limits  (Guaranteed QoS)
-#      → kubelet 在 evict 时,Guaranteed 是最后一档(BestEffort < Burstable < Guaranteed)
+#      → During eviction, Guaranteed is the last tier (BestEffort < Burstable < Guaranteed)
 #
-# 两个机制组合:监控组件几乎只有节点真死/失联才会受影响,普通负载尖峰打不坏。
-# 见: tools/helm/monitoring/priority-classes.yaml (需要先 kubectl apply)
+# Combined, monitoring components are only affected when nodes truly die/lose connection,
+# not by ordinary workload spikes.
+# See: tools/helm/monitoring/priority-classes.yaml (must apply with kubectl first)
 # ============================================================================
 
 # =======================
@@ -19,17 +20,17 @@ grafana:
   enabled: true
 
   # ============ Init container fix (Lambda / hostPath PV) ============
-  # 现代 Grafana chart (v8+) 把 init-chown-data 改成 non-root + 丢 CAP_CHOWN,
-  # 在 hostPath / local-path PV 上会撞 "Permission denied" → CrashLoopBackOff。
-  # 关掉它,让 launch.sh 在 PVC bound 后直接在宿主机 chown 472:472。
-  # 见 script/lambda/launch.sh 中 chown_grafana_pv 函数。
+  # Modern Grafana chart (v8+) changed init-chown-data to non-root + dropped CAP_CHOWN,
+  # hits "Permission denied" on hostPath / local-path PV → CrashLoopBackOff.
+  # Disable it, let launch.sh directly chown 472:472 on host after PVC binds.
+  # See chown_grafana_pv function in script/lambda/launch.sh.
   initChownData:
     enabled: false
 
   # ============ Eviction protection ============
   priorityClassName: monitoring-critical
 
-  # Guaranteed QoS:requests = limits → kubelet evict 优先级最低
+  # Guaranteed QoS: requests = limits → kubelet evict priority lowest
   resources:
     requests:
       cpu: "500m"
@@ -69,29 +70,29 @@ grafana:
       nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
       nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
 
-  # ⚠️ grafana.ini 注意点:INI section 名带点 (如 [auth.anonymous],
-  # [auth.basic]) 必须用字面字符串 key,不能用嵌套 YAML map。
-  # 嵌套 map 会被 helm 渲染成 JSON 塞进父 section,Grafana 看不懂。
+  # ⚠️ grafana.ini note: INI section names with dots (like [auth.anonymous],
+  # [auth.basic]) must use literal string keys, not nested YAML map.
+  # Nested map will be rendered by helm as JSON injected into parent section, Grafana won't understand.
   grafana.ini:
     server:
       root_url: "%(protocol)s://%(domain)s/grafana/"
       serve_from_sub_path: true
 
-    # [auth] 主 section
+    # [auth] main section
     auth:
-      # 隐藏登录表单 + 退出菜单 → 配合 anonymous Admin 实现"零登录"体验
-      # ⚠️ 此项严格禁止用于公网!仅适合本地/内网 demo
+      # Hide login form + logout menu → combined with anonymous Admin to achieve "zero-login" experience
+      # ⚠️ strictly forbidden for public networks! Only for local/internal demo
       disable_login_form: true
       disable_signout_menu: true
 
-    # [auth.anonymous] —— 字面字符串 key,不是嵌套
-    # 任何人不登录直接进就是 Admin 权限
+    # [auth.anonymous] —— literal string key, not nested
+    # Anyone logs in without authentication with Admin privilege
     "auth.anonymous":
       enabled: true
       org_name: "Main Org."
       org_role: Admin
 
-    # [auth.basic] —— 关掉 basic auth(我们不用)
+    # [auth.basic] —— disable basic auth (we don't use it)
     "auth.basic":
       enabled: false
 
@@ -112,7 +113,7 @@ prometheus:
     # ============ Eviction protection ============
     priorityClassName: monitoring-critical
 
-    # Guaranteed QoS:requests = limits
+    # Guaranteed QoS: requests = limits
     resources:
       requests:
         cpu: "1"
@@ -121,14 +122,14 @@ prometheus:
         cpu: "1"
         memory: "2Gi"
 
-    # Prometheus 自己处理子路径
+    # Prometheus handles subpath itself
     routePrefix: /prometheus
     externalUrl: /prometheus
 
-    # Selector 全部放开:这是单团队/小项目的标准做法。
-    # 任意 namespace 下的 ServiceMonitor / PodMonitor / PrometheusRule
-    # 都会被 Prometheus 选中,不再要求带特定 label。
-    # 如果以后多团队隔离,再收紧成 matchLabels: {team: foo} 之类。
+    # Selectors fully open: standard practice for single team/small projects.
+    # ServiceMonitor / PodMonitor / PrometheusRule in any namespace
+    # will be selected by Prometheus, no requirement for specific labels.
+    # If multi-team isolation is needed later, tighten to matchLabels: {team: foo}, etc.
     serviceMonitorSelectorNilUsesHelmValues: false
     serviceMonitorNamespaceSelectorNilUsesHelmValues: false
     serviceMonitorSelector: {}
@@ -198,8 +199,8 @@ alertmanager:
         effect: "NoSchedule"
 
 # =======================
-# Prometheus Operator (kps 自身的 controller)
-# 中等优先级,这是管 Prometheus/Alertmanager CR 的中枢
+# Prometheus Operator (kps's own controller)
+# Medium priority, this is the hub managing Prometheus/Alertmanager CR
 # =======================
 prometheusOperator:
   priorityClassName: monitoring-critical
@@ -212,8 +213,8 @@ prometheusOperator:
       memory: "128Mi"
 
 # =======================
-# Node Exporter (DaemonSet, 每节点一个,本身就是 system-node-critical 概念)
-# 给 standard 等级即可,不抢 critical
+# Node Exporter (DaemonSet, one per node, inherently system-node-critical concept)
+# Standard tier is sufficient, no need for critical
 # =======================
 nodeExporter:
   enabled: true

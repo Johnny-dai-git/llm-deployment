@@ -1,17 +1,17 @@
 #!/bin/bash
 set -e
 
-# ======= 配置区域(可用环境变量覆盖) =======
+# ======= Configuration (can be overridden by environment variables) =======
 GITHUB_USERNAME="${GITHUB_USERNAME:-Johnny-dai-git}"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 GITHUB_REPO="${GITHUB_REPO:-llm-deployment}"
-# 默认用 telemetry 分支(开发主线),线上稳定后可切回 main
+# Default to telemetry branch (development mainline), can switch back to main after stable
 GITHUB_BRANCH="${GITHUB_BRANCH:-telemetry}"
 
-# 存储设备:台式机/服务器走 /dev/sda4,笔记本上没这分区时 fallback 到项目目录
-# fallback 路径:脚本会再拼一层 /k8s,所以最终 PV 落在
+# Storage device: use /dev/sda4 on desktop/server, fallback to project dir on laptops without this partition
+# Fallback path: script adds /k8s layer, so final PV lands at
 #   /home/johnny/Desktop/projects/llm-server/data/k8s
-# 优点:跟项目代码同一棵目录树,重启保留,备份迁移方便,跟 etcd/containerd 不抢 IO
+# Benefits: same directory tree as project code, survives reboot, easy backup/migration, no IO contention with etcd/containerd
 STORAGE_DEVICE="${STORAGE_DEVICE:-/dev/sda4}"
 STORAGE_FALLBACK_PATH="${STORAGE_FALLBACK_PATH:-/home/johnny/Desktop/projects/llm-server/data}"
 
@@ -23,12 +23,12 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# launch.sh 现在在 script/laptop/ 下,repo 根需要再上一层
+# launch.sh is now in script/laptop/, repo root is one level up
 REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 INSTALL_DIR="${SCRIPT_DIR}"
 CONTROL_DIR="${REPO_DIR}/tools"
 
-# GPU 检测(全局,后续 Phase 复用)
+# GPU detection (global, reused by subsequent phases)
 HAS_GPU=0
 if lspci 2>/dev/null | grep -i nvidia >/dev/null 2>&1; then
   HAS_GPU=1
@@ -37,7 +37,7 @@ fi
 echo "===== Kubernetes control-plane bootstrap start ====="
 echo ">>> Branch:    ${GITHUB_BRANCH}"
 echo ">>> Has GPU:   $([ $HAS_GPU -eq 1 ] && echo yes || echo no)"
-echo ">>> Storage:   ${STORAGE_DEVICE}(找不到时 fallback 到 ${STORAGE_FALLBACK_PATH})"
+echo ">>> Storage:   ${STORAGE_DEVICE} (fallback to ${STORAGE_FALLBACK_PATH} if not found)"
 echo ""
 
 # ================================================================
@@ -58,71 +58,71 @@ cd "${INSTALL_DIR}"
 sudo bash all_install.sh
 
 # ================================================================
-# Phase 2.5: containerd 配置对齐
+# Phase 2.5: align containerd config
 # ----------------------------------------------------------------
-# 这一步要解决两个互相纠缠的坑,顺序很重要:
+# This step resolves two tangled gotchas, order matters:
 #
-# 坑 1 — cgroup driver 不一致(必修):
-#   Ubuntu 默认 cgroup v2 + kubeadm kubelet cgroupDriver=systemd,
-#   但 containerd 如果用编译进去的默认配置(没有 /etc/containerd/config.toml),
-#   默认 SystemdCgroup=false,用 cgroupfs。两边不一致 → kubelet 起不来
-#   static pod(etcd/apiserver/controller-manager/scheduler 启动 ~14s 后被
-#   SIGTERM,死循环重启)。
-#   修复:生成默认 config.toml 并把所有 SystemdCgroup 改成 true。
+# Gotcha 1 — inconsistent cgroup driver (required fix):
+#   Ubuntu defaults to cgroup v2 + kubeadm kubelet cgroupDriver=systemd,
+#   but containerd with compiled-in defaults (no /etc/containerd/config.toml)
+#   defaults to SystemdCgroup=false using cgroupfs. Mismatch → kubelet fails
+#   to start static pods (etcd/apiserver/controller-manager/scheduler start
+#   ~14s then SIGTERM, crash loop).
+#   Fix: generate default config.toml and set all SystemdCgroup to true.
 #
-# 坑 2 — nvidia runtime handler 丢失(GPU 节点必修):
-#   生成默认配置会擦掉 nvidia-container-toolkit 注入的 runtimes.nvidia
-#   block。结果:RuntimeClass 'nvidia' 的 pod(vllm-worker / dcgm-exporter)
-#   会一直 ContainerCreating,Events 里报
+# Gotcha 2 — missing nvidia runtime handler (GPU nodes required):
+#   Generating default config erases runtimes.nvidia block injected by
+#   nvidia-container-toolkit. Result: pods with RuntimeClass 'nvidia'
+#   (vllm-worker / dcgm-exporter) hang at ContainerCreating with error:
 #     "no runtime for 'nvidia' is configured"
-#   修复:用 nvidia-ctk 把 nvidia runtime 注回 containerd 配置。
-#   nvidia-ctk 可能把新加的 nvidia block 的 SystemdCgroup 写成 false,
-#   所以最后再做一次 sed 'true' 兜底。
+#   Fix: use nvidia-ctk to inject nvidia runtime back into containerd config.
+#   nvidia-ctk may set SystemdCgroup=false in new nvidia block, so do final
+#   sed 'true' as fallback.
 #
-# 必须放在 system.sh(kubeadm init)之前,否则控制面起来就崩。
+# Must run before system.sh (kubeadm init), otherwise control plane crashes.
 # ================================================================
-echo ">>> Phase 2.5: 对齐 containerd 配置(cgroup + nvidia runtime)"
+echo ">>> Phase 2.5: align containerd config (cgroup + nvidia runtime)"
 sudo mkdir -p /etc/containerd
 NEED_RESTART_CONTAINERD=0
 
-# (1) 确保 SystemdCgroup = true
+# (1) Ensure SystemdCgroup = true
 if [ ! -f /etc/containerd/config.toml ] || ! grep -q "SystemdCgroup = true" /etc/containerd/config.toml 2>/dev/null; then
-    echo "    - 生成默认 containerd 配置并启用 SystemdCgroup"
+    echo "    - Generate default containerd config and enable SystemdCgroup"
     sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null
     sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
     NEED_RESTART_CONTAINERD=1
 else
-    echo "    ✔ containerd 已是 SystemdCgroup=true"
+    echo "    ✔ containerd already has SystemdCgroup=true"
 fi
 
-# (2) GPU 节点:把 nvidia runtime handler 注入 containerd 配置
+# (2) GPU nodes: inject nvidia runtime handler into containerd config
 if [ "${HAS_GPU}" -eq 1 ]; then
     if command -v nvidia-ctk >/dev/null 2>&1; then
         if ! grep -q 'runtimes\.nvidia' /etc/containerd/config.toml 2>/dev/null; then
-            echo "    - 用 nvidia-ctk 注入 nvidia runtime handler"
+            echo "    - Inject nvidia runtime handler using nvidia-ctk"
             sudo nvidia-ctk runtime configure --runtime=containerd --config=/etc/containerd/config.toml
-            # nvidia-ctk 可能在新加的 block 里把 SystemdCgroup 写成 false,统一改回 true
+            # nvidia-ctk may set SystemdCgroup=false in new block, fix it back to true
             sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
             NEED_RESTART_CONTAINERD=1
         else
-            echo "    ✔ containerd 已有 nvidia runtime handler"
+            echo "    ✔ containerd already has nvidia runtime handler"
         fi
     else
-        echo "    ⚠️  HAS_GPU=1 但找不到 nvidia-ctk,RuntimeClass 'nvidia' 的 pod 会卡住"
-        echo "       请确认 all_install.sh 装了 nvidia-container-toolkit"
+        echo "    ⚠️  HAS_GPU=1 but nvidia-ctk not found, RuntimeClass 'nvidia' pods will hang"
+        echo "       Please confirm all_install.sh installed nvidia-container-toolkit"
     fi
 fi
 
-# (3) 需要重启才生效
+# (3) Need restart for config to take effect
 if [ "${NEED_RESTART_CONTAINERD}" -eq 1 ]; then
-    echo "    - 重启 containerd 让配置生效"
+    echo "    - Restart containerd to apply config"
     sudo systemctl restart containerd
     for i in $(seq 1 10); do
         [ -S /run/containerd/containerd.sock ] && break
         sleep 1
     done
 fi
-echo "    ✔ Phase 2.5 完成"
+echo "    ✔ Phase 2.5 complete"
 
 # ================================================================
 # Phase 3: k8s init
@@ -140,14 +140,14 @@ if [ "${HAS_GPU}" -eq 1 ]; then
     kubectl label node system gpu-node=true --overwrite || true
 else
     echo ">>> No GPU detected, skipping gpu-node label"
-    echo "⚠️  vllm-worker 需要 nvidia.com/gpu,本节点无 GPU 时它将 Pending"
+    echo "⚠️  vllm-worker requires nvidia.com/gpu, will be Pending without GPU on this node"
 fi
 
 # ================================================================
-# Phase 4: infra + GPU(只在 GPU 存在时装)
+# Phase 4: infra + GPU (install only when GPU exists)
 # ================================================================
 if [ "${HAS_GPU}" -eq 1 ]; then
-    echo ">>> 安装 NVIDIA device plugin..."
+    echo ">>> Installing NVIDIA device plugin..."
     kubectl apply -f "${CONTROL_DIR}/system/nvidia-device-plugin.yaml" || true
     kubectl rollout status ds/nvidia-device-plugin-daemonset -n kube-system --timeout=60s || true
 
@@ -155,12 +155,12 @@ if [ "${HAS_GPU}" -eq 1 ]; then
     kubectl get runtimeclass nvidia >/dev/null 2>&1 || \
     kubectl apply -f "${CONTROL_DIR}/system/runtimeclass-nvidia.yaml"
 else
-    echo ">>> 无 GPU,跳过 NVIDIA device plugin 与 RuntimeClass"
+    echo ">>> No GPU, skip NVIDIA device plugin and RuntimeClass"
 fi
 
 # ================================================================
 # Storage (local-path)
-# 优先用 STORAGE_DEVICE 指定的分区,找不到就 fallback 到本地目录
+# Prefer partition specified by STORAGE_DEVICE, fallback to local dir if not found
 # ================================================================
 MOUNT_POINT=""
 if [ -b "${STORAGE_DEVICE}" ]; then
@@ -170,7 +170,7 @@ if [ -b "${STORAGE_DEVICE}" ]; then
 fi
 
 if [ -z "${MOUNT_POINT}" ]; then
-    echo "⚠️  ${STORAGE_DEVICE} 未挂载或不存在,fallback 到 ${STORAGE_FALLBACK_PATH}"
+    echo "⚠️  ${STORAGE_DEVICE} not mounted or doesn't exist, fallback to ${STORAGE_FALLBACK_PATH}"
     MOUNT_POINT="${STORAGE_FALLBACK_PATH}"
 fi
 
@@ -220,26 +220,26 @@ helm upgrade --install argocd argo/argo-cd \
   --wait --timeout 10m
 
 # ================================================================
-# ArgoCD Image Updater (手写 YAML 管理)
+# ArgoCD Image Updater (managed via hand-written YAML)
 # ================================================================
 echo "===== Installing ArgoCD Image Updater ====="
 
-# 0️⃣ 确认 namespace
+# 0. Ensure namespace
 kubectl get ns argocd || kubectl create ns argocd
 
-# 1️⃣ 创建 ServiceAccount（必须）
+# 1. Create ServiceAccount (required)
 echo ">>> Step 1: Creating ServiceAccount..."
 kubectl apply -f "${CONTROL_DIR}/argocd-image-updater/argocd-image-updater-sa.yaml"
 
-# 确认 ServiceAccount
+# Verify ServiceAccount
 kubectl get sa -n argocd | grep argocd-image-updater || echo "⚠️  ServiceAccount not found"
 
-# 2️⃣ 应用 RBAC (ClusterRole + Binding)
+# 2. Apply RBAC (ClusterRole + Binding)
 echo ">>> Step 2: Applying RBAC..."
 kubectl apply -f "${CONTROL_DIR}/argocd-image-updater/argocd-image-updater-clusterrole.yaml"
 kubectl apply -f "${CONTROL_DIR}/argocd-image-updater/argocd-image-updater-clusterrolebinding.yaml"
 
-# 立刻验证权限（关键一步）
+# Immediately verify permissions (critical step)
 echo ">>> Verifying RBAC permissions..."
 if kubectl auth can-i list applications.argoproj.io \
   --as system:serviceaccount:argocd:argocd-image-updater 2>/dev/null | grep -q "yes"; then
@@ -248,35 +248,35 @@ else
   echo "⚠️  RBAC permissions check failed, but continuing..."
 fi
 
-# 3️⃣ 创建 ConfigMap（Image Updater 核心配置）
+# 3. Create ConfigMap (core Image Updater config)
 echo ">>> Step 3: Creating ConfigMap..."
 kubectl apply -f "${CONTROL_DIR}/argocd-image-updater/argocd-image-updater-config.yaml"
 
-# 确认 ConfigMap
+# Verify ConfigMap
 kubectl get cm -n argocd | grep image-updater || echo "⚠️  ConfigMap not found"
 
-# 4️⃣ 创建 ServiceAccount Token（K8s ≥1.24 推荐）
+# 4. Create ServiceAccount Token (recommended for K8s ≥1.24)
 echo ">>> Step 4: Creating ServiceAccount Token..."
 kubectl apply -f "${CONTROL_DIR}/argocd-image-updater/argocd-image-updater-token.yaml" || true
 
-# 5️⃣ 启动 Image Updater Deployment
+# 5. Start Image Updater Deployment
 echo ">>> Step 5: Starting Image Updater Deployment..."
 kubectl apply -f "${CONTROL_DIR}/argocd-image-updater/argocd-image-updater-controller.yaml"
 
-# 等待 Deployment 就绪
+# Wait for Deployment readiness
 echo ">>> Waiting for Image Updater to be ready..."
 kubectl rollout status deployment/argocd-image-updater-controller -n argocd --timeout=5m || echo "⚠️  Deployment may still be starting..."
 
 # ================================================================
-# ArgoCD Applications (Image Updater 需要这些 Application 才能工作)
+# ArgoCD Applications (Image Updater needs these Applications to work)
 # ================================================================
 echo "===== Deploying ArgoCD Applications ====="
 
-# 部署 LLM Platform Services Application
+# Deploy LLM Platform Services Application
 echo ">>> Deploying llm-platform-services Application..."
 kubectl apply -f "${CONTROL_DIR}/argocd-image-updater/llm-application.yaml"
 
-# 等待 Application 创建完成
+# Wait for Application creation to complete
 echo ">>> Waiting for Application to be created..."
 sleep 5
 kubectl get application llm-platform-services -n argocd || echo "⚠️  Application not found"
@@ -284,14 +284,14 @@ kubectl get application llm-platform-services -n argocd || echo "⚠️  Applica
 echo "✅ ArgoCD Applications deployed"
 
 # ================================================================
-# Monitoring(kube-prometheus-stack + DCGM)
-# --reuse-values=false:确保 kps-values.yaml 改动后真的生效
+# Monitoring (kube-prometheus-stack + DCGM)
+# --reuse-values=false: ensure kps-values.yaml changes take effect
 # ================================================================
 
 # ----------------------------------------------------------------
-# 先 apply PriorityClass(kps 的 helm values 会引用它,如果先装 helm
-# 后 apply,helm 会抱怨 PriorityClass 不存在)
-# 见 priority-classes.yaml 里两档:
+# Apply PriorityClass first (kps helm values reference it, if helm
+# installed first then PriorityClass applied, helm will complain)
+# See priority-classes.yaml with two tiers:
 #   monitoring-critical  (100000) Grafana / Prometheus / Alertmanager
 #   monitoring-standard  (50000)  node-exporter / kube-state-metrics
 # ----------------------------------------------------------------
@@ -305,7 +305,7 @@ helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
   --reuse-values=false \
   --wait --timeout 10m
 
-# DCGM 只在 GPU 存在时装
+# Install DCGM only when GPU exists
 if [ "${HAS_GPU}" -eq 1 ]; then
     echo "===== Installing DCGM exporter ====="
     helm upgrade --install dcgm nvidia/dcgm-exporter \
@@ -314,64 +314,64 @@ if [ "${HAS_GPU}" -eq 1 ]; then
       --reuse-values=false \
       --wait --timeout 5m
 else
-    echo ">>> 无 GPU,跳过 DCGM exporter"
+    echo ">>> No GPU, skip DCGM exporter"
 fi
 
 # ================================================================
-# NVIDIA DCGM Grafana Dashboard 自动 import (仅 GPU 节点)
+# NVIDIA DCGM Grafana Dashboard auto-import (GPU nodes only)
 # ----------------------------------------------------------------
-# 思路:
-#   kube-prometheus-stack 自带 grafana-sc-dashboard sidecar,
-#   它会把所有带 label `grafana_dashboard=1` 的 ConfigMap 自动转成
-#   dashboard 写到 /tmp/dashboards/。我们下载 NVIDIA 官方 dashboard
-#   12239 的 JSON,塞进 ConfigMap,sidecar 就会接管。
+# Approach:
+#   kube-prometheus-stack includes grafana-sc-dashboard sidecar,
+#   it automatically converts all ConfigMaps with label `grafana_dashboard=1`
+#   to dashboards written to /tmp/dashboards/. We download NVIDIA official
+#   dashboard 12239 JSON, put it in ConfigMap, sidecar manages it.
 #
-# 不靠 Grafana admin API(那个要密码,且在匿名 admin 模式下 401)。
-# 不靠 helm values(改动 kps 还要 helm upgrade,代价大)。
-# 这条路 idempotent,反复跑不会出错。
+# Not using Grafana admin API (requires password, 401 in anonymous admin mode).
+# Not using helm values (changing kps requires helm upgrade, expensive).
+# This approach is idempotent, no errors on repeated runs.
 # ================================================================
 if [ "${HAS_GPU}" -eq 1 ]; then
     echo "===== Installing NVIDIA DCGM Grafana dashboard ====="
     DCGM_DASHBOARD=/tmp/dcgm-dashboard.json
 
-    # 下载 NVIDIA 官方 DCGM Exporter Dashboard (id=12239) latest revision
+    # Download NVIDIA official DCGM Exporter Dashboard (id=12239) latest revision
     if curl -sfL "https://grafana.com/api/dashboards/12239/revisions/latest/download" -o "${DCGM_DASHBOARD}"; then
         DCGM_SIZE=$(wc -c < "${DCGM_DASHBOARD}" 2>/dev/null || echo 0)
         if [ "${DCGM_SIZE}" -lt 5000 ]; then
-            echo "⚠️  DCGM dashboard 下载内容异常(size=${DCGM_SIZE} < 5KB),跳过"
+            echo "⚠️  DCGM dashboard download anomaly (size=${DCGM_SIZE} < 5KB), skip"
         else
-            # 替换 datasource 占位符为实际 datasource 名(kube-prometheus-stack 默认叫 'Prometheus')
+            # Replace datasource placeholder with actual datasource name (kube-prometheus-stack defaults to 'Prometheus')
             sed -i 's|${DS_PROMETHEUS}|Prometheus|g' "${DCGM_DASHBOARD}"
 
-            # 创建带 grafana_dashboard=1 label 的 ConfigMap,sidecar 自动加载
+            # Create ConfigMap with grafana_dashboard=1 label, sidecar auto-loads
             kubectl -n monitoring create configmap nvidia-dcgm-dashboard \
                 --from-file=dcgm-dashboard.json="${DCGM_DASHBOARD}" \
                 --dry-run=client -o yaml \
                 | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
                 | kubectl apply -f -
 
-            # 等 sidecar 把文件写入 grafana 容器
+            # Wait for sidecar to write file to grafana container
             sleep 30
 
-            # 让 Grafana 重新扫描 provisioning 目录(SIGHUP 让其 reload 配置)
+            # Make Grafana re-scan provisioning directory (SIGHUP triggers reload)
             GRAFANA_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
             if [ -n "${GRAFANA_POD}" ]; then
                 kubectl exec -n monitoring "${GRAFANA_POD}" -c grafana -- killall -SIGHUP grafana 2>/dev/null || true
-                echo "✓ DCGM dashboard 已 import,在 Grafana 搜索 'nvidia' 或 'dcgm' 即可看到"
+                echo "✓ DCGM dashboard imported, search 'nvidia' or 'dcgm' in Grafana to view"
             else
-                echo "⚠️  Grafana pod 未找到,dashboard 文件已写入 ConfigMap,Grafana 启动后自动加载"
+                echo "⚠️  Grafana pod not found, dashboard file written to ConfigMap, auto-loads when Grafana starts"
             fi
         fi
     else
-        echo "⚠️  无法从 grafana.com 下载 DCGM dashboard(网络或 URL 失效),跳过"
+        echo "⚠️  Cannot download DCGM dashboard from grafana.com (network or URL issue), skip"
     fi
 fi
 
 # ================================================================
 # HPA support: metrics-server + prometheus-adapter
 # ================================================================
-# metrics-server: 提供 K8s 资源指标(CPU/内存),HPA 用 Resource 类型时必需
-# --kubelet-insecure-tls 在自签证书的 kubeadm 集群上需要,生产环境改成正式证书
+# metrics-server: provides K8s resource metrics (CPU/memory), required for HPA Resource type
+# --kubelet-insecure-tls needed on kubeadm clusters with self-signed certs, use proper cert in prod
 echo "===== Installing metrics-server (for CPU/memory HPA) ====="
 helm upgrade --install metrics-server metrics-server/metrics-server \
   -n kube-system \
@@ -379,8 +379,8 @@ helm upgrade --install metrics-server metrics-server/metrics-server \
   --reuse-values=false \
   --wait --timeout 5m
 
-# prometheus-adapter: 把 Prometheus 任意指标变成 K8s custom metrics API
-# 让 HPA 能基于 vllm:num_requests_waiting 这种业务指标扩缩
+# prometheus-adapter: convert any Prometheus metric to K8s custom metrics API
+# Enable HPA based on business metrics like vllm:num_requests_waiting
 echo "===== Installing prometheus-adapter (for custom metrics HPA) ====="
 helm upgrade --install prometheus-adapter prometheus-community/prometheus-adapter \
   -n monitoring \
@@ -416,15 +416,15 @@ kubectl get pods -A
 echo ""
 kubectl get nodes -o wide
 echo ""
-echo "===== Access URLs (hostNetwork=true,直接绑你笔记本 80 端口) ====="
+echo "===== Access URLs (hostNetwork=true, directly bind to laptop port 80) ====="
 echo "  Web UI:       http://localhost/web"
 echo "  API:          http://localhost/api/v1/chat/completions"
-echo "  Grafana:      http://localhost/grafana   (匿名 Admin 进得去)"
+echo "  Grafana:      http://localhost/grafana   (anonymous Admin access enabled)"
 echo "  Prometheus:   http://localhost/prometheus"
 echo "  Landing:      http://localhost/"
 echo ""
 echo "===== Verify monitoring is actually scraping ====="
-echo "  在 Prometheus UI 看 targets 页面,应该看到:"
+echo "  Check targets page in Prometheus UI, should see:"
 echo "    - serviceMonitor/llm/llm-api/0   (UP)"
 echo "    - serviceMonitor/llm/vllm-worker/0 (UP)"
 if [ "${HAS_GPU}" -eq 1 ]; then
@@ -433,9 +433,9 @@ fi
 echo ""
 
 if [ "${HAS_GPU}" -eq 0 ]; then
-    echo "⚠️  本节点无 GPU,vllm-worker 会停在 Pending 状态:"
-    echo "    nodeSelector gpu-node=true 没有节点匹配,且 nvidia.com/gpu: 1 不可满足"
-    echo "    要让 vllm-worker 真跑起来,必须在带 NVIDIA GPU 的节点上部署"
+    echo "⚠️  No GPU on this node, vllm-worker will stay Pending:"
+    echo "    nodeSelector gpu-node=true has no matching nodes, nvidia.com/gpu: 1 cannot be satisfied"
+    echo "    To run vllm-worker, must deploy on node with NVIDIA GPU"
     echo ""
 fi
 

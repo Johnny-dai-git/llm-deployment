@@ -26,9 +26,9 @@ spec:
     metadata:
       labels:
         app: llm-web
-      # llm-web 是静态 nginx,不暴露 Prometheus 指标。
-      # 如果未来要采集 nginx 指标,需要加 nginx-prometheus-exporter sidecar
-      # 然后给它写一个 ServiceMonitor。当前不需要。
+      # llm-web is static nginx, does not expose Prometheus metrics.
+      # If nginx metrics need to be collected in the future, add nginx-prometheus-exporter sidecar
+      # and write a ServiceMonitor for it. Not needed currently.
     spec:
       terminationGracePeriodSeconds: 30
       securityContext:
@@ -85,17 +85,17 @@ spec:
               subPath: default.conf
               readOnly: true
           # ========= Probes =========
-          # nginx 启动 < 500ms,startupProbe 大部分时候是冗余的;
-          # 加它是为了:
-          #   1) 跟其他组件配置形状一致
-          #   2) 防御 ConfigMap 挂载偶尔慢的边缘情况
+          # nginx starts < 500ms, startupProbe is mostly redundant;
+          # Add it for:
+          #   1) Consistent configuration shape with other components
+          #   2) Guard against occasional slow ConfigMap mount edge cases
           startupProbe:
             httpGet:
               path: /health
               port: 8080
             periodSeconds: 3
             timeoutSeconds: 3
-            failureThreshold: 5          # ~15s 启动预算
+            failureThreshold: 5          # ~15s startup budget
 
           readinessProbe:
             httpGet:

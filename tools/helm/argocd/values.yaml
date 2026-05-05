@@ -1,16 +1,16 @@
 # ArgoCD Helm Chart Values
-# 用于通过 Helm 安装和配置 ArgoCD
+# For installing and configuring ArgoCD via Helm
 
 server:
-  # 关闭 HTTPS 强制（使用 HTTP）
+  # Disable HTTPS enforcement (use HTTP)
   insecure: true
-  
-  # 额外的命令行参数（配置子路径访问）
+
+  # Additional command line parameters (configure subpath access)
   extraArgs:
     - --rootpath=/argocd
     - --basehref=/argocd
 
-# Ingress 配置
+# Ingress configuration
 ingress:
   enabled: true
   ingressClassName: nginx

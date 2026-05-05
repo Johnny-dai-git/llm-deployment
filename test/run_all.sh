@@ -1,19 +1,19 @@
 #!/bin/bash
 # ================================================================
-# run_all.sh — 一键跑全部测试
+# run_all.sh — One-command run all tests
 # ----------------------------------------------------------------
-# 顺序执行 01_smoke → 02_latency → 03_throughput → 04_hpa → 05_stability,
-# 全部结果落到 ./results/<timestamp>/,最后生成 SUMMARY.md。
+# Execute sequentially: 01_smoke → 02_latency → 03_throughput → 04_hpa → 05_stability,
+# all results go to ./results/<timestamp>/, finally generate SUMMARY.md.
 #
-# 用法:
-#   ./run_all.sh                                  # 跑全套(默认 ~10 分钟)
-#   ./run_all.sh smoke latency                    # 只跑指定子集
+# Usage:
+#   ./run_all.sh                                  # Run full suite (default ~10 min)
+#   ./run_all.sh smoke latency                    # Run only specified subset
 #
-# 环境变量:
-#   TEST_ENDPOINT  - LLM API 地址 (默认 http://localhost/api/v1/chat/completions)
-#   TEST_MODEL     - 模型名 (默认 qwen2.5-0.5b)
-#   STABILITY_DURATION - 05 稳定性测试时长(秒,默认 300)
-#   HPA_LOAD_DURATION  - 04 HPA 测试持续时间(秒,默认 180)
+# Environment variables:
+#   TEST_ENDPOINT  - LLM API address (default http://localhost/api/v1/chat/completions)
+#   TEST_MODEL     - Model name (default qwen2.5-0.5b)
+#   STABILITY_DURATION - 05 stability test duration (seconds, default 300)
+#   HPA_LOAD_DURATION  - 04 HPA test duration (seconds, default 180)
 # ================================================================
 set -uo pipefail
 
@@ -23,10 +23,10 @@ source "${SCRIPT_DIR}/lib/common.sh"
 check_deps
 check_endpoint
 
-# 初始化结果目录(后续 sub-script 共用)
+# Initialize results directory (shared by subsequent sub-scripts)
 init_results_dir
 
-# 选择性跑子集
+# Selectively run subset
 SELECTED=("$@")
 ALL=(smoke latency throughput hpa stability realistic)
 [ ${#SELECTED[@]} -eq 0 ] && SELECTED=("${ALL[@]}")
@@ -34,12 +34,12 @@ ALL=(smoke latency throughput hpa stability realistic)
 START_TS=$(date +%s)
 
 log_step "RUN ALL TESTS"
-log_info "选中的测试: ${SELECTED[*]}"
-log_info "结果目录:   ${RESULTS_DIR}"
-log_info "提示:Ctrl+C 可中断,已完成的测试结果会保留"
+log_info "Selected tests: ${SELECTED[*]}"
+log_info "Results dir:    ${RESULTS_DIR}"
+log_info "Tip: Ctrl+C to interrupt, completed test results will be preserved"
 echo
 
-# 起始集群快照
+# Initial cluster snapshot
 snapshot_cluster "${RESULTS_DIR}/00_initial_cluster.txt"
 
 declare -A TEST_STATUS
@@ -47,9 +47,9 @@ declare -A TEST_STATUS
 run_one() {
     local key="$1"
     local script="${SCRIPT_DIR}/$2"
-    log_info "▶ 跑 ${script##*/}"
+    log_info "▶ Running ${script##*/}"
     if [ ! -x "${script}" ]; then
-        log_error "${script} 不存在或没有可执行权限"
+        log_error "${script} does not exist or not executable"
         TEST_STATUS[${key}]="missing"
         return
     fi
@@ -57,7 +57,7 @@ run_one() {
         TEST_STATUS[${key}]="ok"
     else
         TEST_STATUS[${key}]="failed"
-        log_warn "  ${script##*/} 退出码非 0,继续后面的测试"
+        log_warn "  ${script##*/} exited non-zero, continuing with remaining tests"
     fi
     echo
 }
@@ -69,16 +69,16 @@ run_one() {
 [[ " ${SELECTED[*]} " =~ " stability "  ]] && run_one stability  05_stability.sh
 [[ " ${SELECTED[*]} " =~ " realistic "  ]] && run_one realistic  06_realistic_load.sh
 
-# 终态集群快照
+# Final cluster snapshot
 snapshot_cluster "${RESULTS_DIR}/99_final_cluster.txt"
 
 END_TS=$(date +%s)
 TOTAL_SEC=$((END_TS - START_TS))
 
-# ========== 生成 SUMMARY.md ==========
+# ========== Generate SUMMARY.md ==========
 SUMMARY="${RESULTS_DIR}/SUMMARY.md"
 
-# helper: jq 读 json 字段,失败给 N/A
+# helper: jq read json field, return N/A on failure
 jq_or_na() {
     local file="$1" path="$2"
     [ -f "${file}" ] && jq -r "${path} // \"N/A\"" "${file}" 2>/dev/null || echo "N/A"
@@ -144,7 +144,7 @@ jq_or_na() {
 
     # ========== 03 throughput ==========
     if [ -f "${RESULTS_DIR}/03_throughput.json" ]; then
-        echo "## 03 — Throughput (输出 token/s)"
+        echo "## 03 — Throughput (output token/s)"
         echo
         echo "| scenario | requests | concurrency | wall (s) | output tok/s | avg latency (ms) |"
         echo "|---|---|---|---|---|---|"
@@ -165,7 +165,7 @@ jq_or_na() {
         echo
         status=$(jq_or_na "${RESULTS_DIR}/04_hpa.json" .status)
         if [ "${status}" = "skipped" ]; then
-            echo "_skipped: HPA 'vllm-worker' 不存在_"
+            echo "_skipped: HPA 'vllm-worker' not found_"
         else
             init=$(jq_or_na "${RESULTS_DIR}/04_hpa.json" .initial_replicas)
             peak=$(jq_or_na "${RESULTS_DIR}/04_hpa.json" .peak_replicas)
@@ -176,12 +176,12 @@ jq_or_na() {
             echo "- HPA range: \`[${min} .. ${max}]\`"
             echo "- replicas: initial=${init}, **peak=${peak}**, final=${final}"
             if [ "${triggered}" = "true" ]; then
-                echo "- ✅ HPA 触发了扩容"
+                echo "- ✅ HPA successfully triggered scale-up"
             else
-                echo "- ⚠️  HPA 没扩容(load 不足 / metrics 不就绪 / 阈值过高)"
+                echo "- ⚠️  HPA did not scale (insufficient load / metrics not ready / threshold too high)"
             fi
             echo
-            echo "时间线见 \`04_hpa_timeline.txt\`(每 5 秒一行)。"
+            echo "Timeline in \`04_hpa_timeline.txt\` (one line every 5 seconds)."
         fi
         echo
     fi
@@ -204,14 +204,14 @@ jq_or_na() {
         if [ "${passed}" = "true" ]; then
             echo "- ✅ stability **PASSED**"
         else
-            echo "- ❌ stability **FAILED**(errors > 1% 或 pods restarted)"
+            echo "- ❌ stability **FAILED** (errors > 1% or pods restarted)"
         fi
         echo
     fi
 
     # ========== 06 realistic ==========
     if [ -f "${RESULTS_DIR}/06_realistic.json" ]; then
-        echo "## 06 — Realistic Load (随机 prompt,无 prefix-cache 加速)"
+        echo "## 06 — Realistic Load (random prompts, no prefix-cache speedup)"
         echo
         d=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .duration_sec)
         conc=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .concurrency)
@@ -223,7 +223,7 @@ jq_or_na() {
         echo "- duration: ${d}s, concurrency: ${conc}, prompt pool: ${pool}"
         echo "- OK=${ok}  ERR=${err}  (rate=${rate}%, RPS=${rps})"
         echo
-        echo "**整体延迟 (ms):**"
+        echo "**Overall latency (ms):**"
         echo "| count | min | max | mean | P50 | P90 | P95 | P99 |"
         echo "|---|---|---|---|---|---|---|---|"
         cnt=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.count)
@@ -236,7 +236,7 @@ jq_or_na() {
         p99=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.p99_ms)
         echo "| ${cnt} | ${mn} | ${mx} | ${me} | ${p50} | ${p90} | ${p95} | ${p99} |"
         echo
-        echo "**按 prompt 长度分组的延迟 P50/P95 (ms):**"
+        echo "**Latency P50/P95 grouped by prompt length (ms):**"
         echo "| bucket | count | P50 | P95 |"
         echo "|---|---|---|---|"
         for b in short medium long; do
@@ -246,27 +246,27 @@ jq_or_na() {
             echo "| ${b} | ${c} | ${p50_b} | ${p95_b} |"
         done
         echo
-        echo "**Token 吞吐 (基于 wall time):**"
+        echo "**Token throughput (based on wall time):**"
         op=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .token_throughput.output_tok_per_sec)
         tp=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .token_throughput.total_tok_per_sec)
         echo "- output tok/s: **${op}**"
-        echo "- total tok/s (含 prompt): ${tp}"
+        echo "- total tok/s (including prompt): ${tp}"
         echo
     fi
 
     echo "---"
     echo
-    echo "## 文件清单"
+    echo "## File List"
     echo
     cd "${RESULTS_DIR}" && ls -1 | sed 's|^|- `|; s|$|`|'
 } > "${SUMMARY}"
 
 echo
 log_step "DONE"
-log_info "总耗时: ${TOTAL_SEC}s"
-log_info "结果:   ${RESULTS_DIR}"
-log_info "汇总:   ${SUMMARY}"
+log_info "Total runtime: ${TOTAL_SEC}s"
+log_info "Results:      ${RESULTS_DIR}"
+log_info "Summary:      ${SUMMARY}"
 echo
-echo "查看汇总:"
+echo "View summary:"
 echo "  cat ${SUMMARY}"
-echo "  glow ${SUMMARY}     # 如果装了 glow,渲染更好看"
+echo "  glow ${SUMMARY}     # if installed, renders prettier"

@@ -17,12 +17,12 @@ spec:
   # A100 node bumps this to 14, etc.
   maxReplicas: 7
   metrics:
-    # ============ 主指标:vLLM 内部等待队列深度 ============
-    # 由 prometheus-adapter 暴露(见 tools/helm/monitoring/prometheus-adapter-values.yaml)
-    # 平均每个 Pod 等待中的请求数 > 5 → 扩容
+    # ============ Primary metric: vLLM internal queue depth ============
+    # Exposed by prometheus-adapter (see tools/helm/monitoring/prometheus-adapter-values.yaml)
+    # Average waiting requests per Pod > 5 → scale up
     #
-    # 为什么用这个不用 CPU:GPU 推理服务的瓶颈在 GPU,
-    # CPU 利用率往往很低,不能反映真实压力
+    # Why use this not CPU: GPU inference service bottleneck is GPU,
+    # CPU utilization is usually low, cannot reflect real pressure
     - type: Pods
       pods:
         metric:
@@ -31,10 +31,10 @@ spec:
           type: AverageValue
           averageValue: "5"
   behavior:
-    # ============ 扩容策略 ============
-    # GPU 模型加载慢(冷启动 30-60 秒),不能太激进:
-    # stabilizationWindow: 60 秒平均,避免瞬时高峰
-    # 每 2 分钟最多扩 1 个 Pod,给新 Pod 留时间加载模型
+    # ============ Scale-up policy ============
+    # GPU model loading is slow (cold start 30-60 seconds), cannot be too aggressive:
+    # stabilizationWindow: 60 second average, avoid instantaneous peaks
+    # At most scale up 1 Pod per 2 minutes, give new Pod time to load model
     scaleUp:
       stabilizationWindowSeconds: 60
       policies:
@@ -42,10 +42,10 @@ spec:
           value: 1
           periodSeconds: 120
       selectPolicy: Max
-    # ============ 缩容策略 ============
-    # GPU Pod 重启代价大(模型重新加载),不能太激进:
-    # stabilizationWindow: 10 分钟平均才缩容
-    # 每 5 分钟最多缩 1 个,温和
+    # ============ Scale-down policy ============
+    # GPU Pod restart cost is high (model reloading), cannot be too aggressive:
+    # stabilizationWindow: average over 10 minutes before scaling down
+    # At most scale down 1 Pod every 5 minutes, gentle
     scaleDown:
       stabilizationWindowSeconds: 600
       policies:

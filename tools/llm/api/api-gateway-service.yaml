@@ -11,6 +11,6 @@ spec:
     app: llm-api
   ports:
     - name: http
-      port: 8000         # API Gateway 监听端口
+      port: 8000         # API Gateway listening port
       targetPort: 8000
       protocol: TCP

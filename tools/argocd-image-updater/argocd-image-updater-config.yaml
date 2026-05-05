@@ -8,7 +8,7 @@ data:
   argocd.server: argocd-server.argocd.svc.cluster.local
   argocd.insecure: "true"
 
-  # 👇 关键
+  # 👇 Key setting
   dryRun: "false"
 
   interval: 2m

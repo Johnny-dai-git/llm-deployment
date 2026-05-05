@@ -1,14 +1,14 @@
 #!/bin/bash
 # ================================================================
-# 01_smoke.sh — 功能正确性测试
+# 01_smoke.sh — Functional correctness test
 # ----------------------------------------------------------------
-# 验证 LLM 服务的基本契约:
-#   - /v1/models 返回模型列表
-#   - 单次推理(非流式)
-#   - 流式输出 SSE
-#   - 多轮对话上下文
-#   - 超参数(max_tokens / temperature)
-#   - 错误处理(模型不存在应该 4xx 不 5xx)
+# Verify LLM service basic contract:
+#   - /v1/models returns model list
+#   - Single inference (non-streaming)
+#   - Streaming output (SSE)
+#   - Multi-turn conversation context
+#   - Hyperparameters (max_tokens / temperature)
+#   - Error handling (non-existent model should 4xx not 5xx)
 # ================================================================
 set -uo pipefail
 
@@ -29,7 +29,7 @@ PASS=0
 FAIL=0
 RESULTS=()
 
-# 单个 case 的 helper
+# Helper for individual test case
 run_case() {
     local name="$1"
     local cmd="$2"
@@ -60,47 +60,48 @@ run_case() {
     RESULTS+=("{\"name\":\"${name}\",\"result\":\"${result}\"}")
 }
 
-# ----- Case 1: /v1/models 返回模型列表 -----
+# ----- Case 1: /v1/models returns model list -----
 MODELS_URL="${TEST_ENDPOINT%/v1/chat/completions}/v1/models"
 run_case "models endpoint" \
     "curl -fsS --max-time 5 '${MODELS_URL}'" \
     "jq -e '.data[0].id == \"${TEST_MODEL}\"'"
 
-# ----- Case 2: 单次推理(非流式) -----
+# ----- Case 2: Single inference (non-streaming) -----
 run_case "single completion (non-streaming)" \
     "curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"${TEST_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"1+1=?\"}],\"max_tokens\":50}' '${TEST_ENDPOINT}'" \
     "jq -e '.choices[0].message.content | length > 0'"
 
-# ----- Case 3: 流式输出(SSE 应该返回 multiple data: 行) -----
+# ----- Case 3: Streaming output (SSE should return multiple data: lines) -----
 run_case "streaming SSE" \
     "curl -fsS -N --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"${TEST_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":30,\"stream\":true}' '${TEST_ENDPOINT}'" \
     "grep -c '^data: ' | awk '{exit !(\$1 >= 2)}'"
 
-# ----- Case 4: 多轮对话(上下文记忆) -----
-# 模型应该能记住前一轮 user 说过的名字。我们不强校验输出含某个字,
-# 只校验返回成功且有内容(结构正确就算 PASS)。
+# ----- Case 4: Multi-turn conversation (context memory) -----
+# Model should remember the name from the previous user message.
+# We don't strictly verify specific output content,
+# just verify successful return with content (correct structure = PASS).
 run_case "multi-turn conversation" \
-    "curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"${TEST_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"我叫小明\"},{\"role\":\"assistant\",\"content\":\"你好,小明\"},{\"role\":\"user\",\"content\":\"我叫什么?\"}],\"max_tokens\":50}' '${TEST_ENDPOINT}'" \
+    "curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"${TEST_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"My name is Alice\"},{\"role\":\"assistant\",\"content\":\"Hello Alice\"},{\"role\":\"user\",\"content\":\"What is my name?\"}],\"max_tokens\":50}' '${TEST_ENDPOINT}'" \
     "jq -e '.choices[0].message.content | length > 0'"
 
-# ----- Case 5: max_tokens 限制(显式截断) -----
-# max_tokens=10 且 finish_reason 应该是 length(到 token 上限)
+# ----- Case 5: max_tokens enforcement (explicit truncation) -----
+# max_tokens=10 and finish_reason should be 'length' (hit token limit)
 run_case "max_tokens enforcement" \
-    "curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"${TEST_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"写 1000 字的小说\"}],\"max_tokens\":10}' '${TEST_ENDPOINT}'" \
+    "curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"${TEST_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Write a 1000-word story\"}],\"max_tokens\":10}' '${TEST_ENDPOINT}'" \
     "jq -e '.choices[0].finish_reason == \"length\"'"
 
-# ----- Case 6: 错误处理(模型不存在) -----
-# 不存在的模型应该返回 4xx,不应该 5xx 或 timeout
+# ----- Case 6: Error handling (non-existent model) -----
+# Non-existent model should return 4xx, not 5xx or timeout
 run_case "error handling: unknown model returns 4xx" \
     "curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"does-not-exist-99\",\"messages\":[{\"role\":\"user\",\"content\":\"x\"}]}' '${TEST_ENDPOINT}'" \
     "awk '{exit !(\$1 >= 400 && \$1 < 500)}'"
 
-# ----- Case 7: 错误处理(空 messages) -----
+# ----- Case 7: Error handling (empty messages) -----
 run_case "error handling: empty messages returns 4xx" \
     "curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Content-Type: application/json' -X POST -d '{\"model\":\"${TEST_MODEL}\",\"messages\":[]}' '${TEST_ENDPOINT}'" \
     "awk '{exit !(\$1 >= 400 && \$1 < 500)}'"
 
-# ----- 汇总 -----
+# ----- Summary -----
 TOTAL=$((PASS + FAIL))
 {
     echo "{"

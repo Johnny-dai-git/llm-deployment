@@ -13,9 +13,9 @@ metadata:
     argocd-image-updater.argoproj.io/git-branch: main
 
 spec:
-  # 初始 1 副本,实际由 HPA(vllm-hpa.yaml)按队列深度动态调整 1↔2
-  # HPA 一旦运行后会接管这个字段,不要手动改 replicas
-  # 上限 2 来自 GPU time-slicing 切 2 份;Lambda 多 GPU 时改 HPA maxReplicas
+  # Initial 1 replica, actual dynamically adjusted by HPA (vllm-hpa.yaml) based on queue depth
+  # Once HPA runs, it takes over this field, do not manually change replicas
+  # Limit of 2 comes from GPU time-slicing split into 2 parts; change HPA maxReplicas for multiple Lambda GPUs
   replicas: 1
   strategy:
     type: RollingUpdate
@@ -30,8 +30,8 @@ spec:
     metadata:
       labels:
         app: vllm-worker
-      # Prometheus 抓取由 vllm-servicemonitor.yaml(ServiceMonitor)负责,
-      # 不再使用 prometheus.io/* annotation(kube-prometheus-stack 不读这个)
+      # Prometheus scraping is handled by vllm-servicemonitor.yaml (ServiceMonitor),
+      # no longer use prometheus.io/* annotation (kube-prometheus-stack doesn't read this)
 
     spec:
       runtimeClassName: nvidia
@@ -102,24 +102,24 @@ spec:
           mountPath: /model
 
         # ========= Probes =========
-        # vLLM 的 OpenAI server 暴露两个我们关心的端点:
-        #   /health      —— 进程级活性 (HTTP 200 = uvicorn 在跑)
-        #   /v1/models   —— 模型加载就绪后才返回 200
+        # vLLM's OpenAI server exposes two endpoints we care about:
+        #   /health      —— process-level liveness (HTTP 200 = uvicorn is running)
+        #   /v1/models   —— return 200 only after model loading is ready
         #
-        # 设计原则:
-        #   - startup/readiness 都用 /v1/models -> 等模型真就绪才放流量
-        #   - liveness 用 /health -> 进程活着即可,避免因为单次推理卡顿
-        #     就把整个 GPU Pod 杀掉重启(代价大)
+        # Design principles:
+        #   - startup/readiness both use /v1/models -> wait for model truly ready before traffic
+        #   - liveness use /health -> process alive is enough, avoid killing entire GPU Pod
+        #     and restarting due to single inference stall (costly)
         startupProbe:
           httpGet:
             path: /v1/models
             port: 8002
-          initialDelaySeconds: 30        # 给模型加载留出冷启动时间
+          initialDelaySeconds: 30        # Reserve time for model loading cold start
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 30           # 30 * 10s = 5 分钟加载预算
-                                         # qwen2.5-0.5b 几秒搞定;
-                                         # 7B+ 模型可调高到 60+
+          failureThreshold: 30           # 30 * 10s = 5 minute loading budget
+                                         # qwen2.5-0.5b finishes in seconds;
+                                         # 7B+ models can increase to 60+
 
         readinessProbe:
           httpGet:
@@ -128,16 +128,16 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
-          # readiness 失败 -> Pod 暂时从 Endpoints 摘掉,不接流量
+          # readiness failure -> Pod temporarily removed from Endpoints, no traffic
 
         livenessProbe:
           httpGet:
             path: /health
             port: 8002
-          periodSeconds: 30              # 不频繁,GPU Pod 重启代价大
+          periodSeconds: 30              # Not frequent, GPU Pod restart cost is high
           timeoutSeconds: 5
           failureThreshold: 3
-          # liveness 失败 -> Pod 重启(慎用,会触发模型重新加载)
+          # liveness failure -> Pod restart (use cautiously, triggers model reload)
 
       volumes:
       # Lambda Labs (single-node bare A100): model weights live on the

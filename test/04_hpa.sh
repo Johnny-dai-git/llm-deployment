@@ -1,14 +1,14 @@
 #!/bin/bash
 # ================================================================
-# 04_hpa.sh — HPA 自动扩容验证
+# 04_hpa.sh — HPA auto-scaling verification
 # ----------------------------------------------------------------
-# 跑一段持续高负载,观察 HPA 是不是真的能根据指标
-# (CPU/memory/custom metrics) 自动扩 vllm-worker 副本数。
-# 同时记录 pod 数量和 HPA 决策的时间线。
+# Run sustained high load and observe whether HPA can automatically
+# scale vllm-worker replicas based on metrics (CPU/memory/custom).
+# Record pod count and HPA decision timeline simultaneously.
 #
-# 输出:
-#   04_hpa_timeline.txt — 每 5 秒 snapshot pod count + HPA state
-#   04_hpa.json         — 最终汇总(初始/峰值/最终 replicas + HPA 触发情况)
+# Output:
+#   04_hpa_timeline.txt — pod count + HPA state snapshot every 5 sec
+#   04_hpa.json         — final summary (initial/peak/final replicas + HPA trigger status)
 # ================================================================
 set -uo pipefail
 
@@ -20,41 +20,41 @@ LOG="${RESULTS_DIR}/04_hpa.log"
 JSON="${RESULTS_DIR}/04_hpa.json"
 TIMELINE="${RESULTS_DIR}/04_hpa_timeline.txt"
 
-LOAD_DURATION="${HPA_LOAD_DURATION:-180}"   # 持续多久(秒)
+LOAD_DURATION="${HPA_LOAD_DURATION:-180}"   # Duration (seconds)
 LOAD_CONCURRENCY="${HPA_LOAD_CONCURRENCY:-10}"
 
 log_step "04 HPA AUTOSCALING"
-log_info "持续 ${LOAD_DURATION}s 的并发 ${LOAD_CONCURRENCY} 推理负载"
-log_info "同时每 5 秒记录 pod count + HPA 决策"
+log_info "Sustained high load: ${LOAD_DURATION}s at concurrency ${LOAD_CONCURRENCY}"
+log_info "Record pod count + HPA decision every 5 seconds"
 echo
 
-# 检查 HPA 是否存在
+# Check if HPA exists
 if ! kubectl get hpa -n llm vllm-worker >/dev/null 2>&1; then
-    log_warn "HPA 'vllm-worker' 不存在,跳过此测试"
-    log_warn "确认 ArgoCD 同步了 vllm-hpa.yaml"
+    log_warn "HPA 'vllm-worker' not found, skipping this test"
+    log_warn "Confirm that ArgoCD synced vllm-hpa.yaml"
     cat > "${JSON}" <<EOF
 {"test":"04_hpa","status":"skipped","reason":"HPA vllm-worker not found in namespace llm"}
 EOF
     exit 0
 fi
 
-# 初始状态
+# Initial state
 INITIAL_REPLICAS=$(kubectl get deployment -n llm vllm-worker -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 0)
 INITIAL_HPA_MIN=$(kubectl get hpa -n llm vllm-worker -o jsonpath='{.spec.minReplicas}' 2>/dev/null || echo "?")
 INITIAL_HPA_MAX=$(kubectl get hpa -n llm vllm-worker -o jsonpath='{.spec.maxReplicas}' 2>/dev/null || echo "?")
-log_info "起始: replicas=${INITIAL_REPLICAS}, HPA range=[${INITIAL_HPA_MIN}..${INITIAL_HPA_MAX}]"
+log_info "Initial: replicas=${INITIAL_REPLICAS}, HPA range=[${INITIAL_HPA_MIN}..${INITIAL_HPA_MAX}]"
 
-# 后台:每 5 秒 snapshot pod 数 + HPA 状态
+# Background: snapshot pod count + HPA state every 5 seconds
 {
     echo "timestamp,elapsed_sec,replicas,ready_replicas,hpa_current_metrics,hpa_target,hpa_min,hpa_max"
     start_ts=$(date +%s)
-    end_ts=$((start_ts + LOAD_DURATION + 60))   # 多采集 60 秒看缩容
+    end_ts=$((start_ts + LOAD_DURATION + 60))   # Collect 60 extra seconds to observe scale-down
     while [ "$(date +%s)" -lt "${end_ts}" ]; do
         now=$(date +%s)
         elapsed=$((now - start_ts))
         replicas=$(kubectl get deployment -n llm vllm-worker -o jsonpath='{.status.replicas}' 2>/dev/null || echo "?")
         ready=$(kubectl get deployment -n llm vllm-worker -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "?")
-        # HPA 字段(可能没有 currentMetrics,jq 处理 null)
+        # HPA fields (currentMetrics may not exist, jq handles null)
         hpa_json=$(kubectl get hpa -n llm vllm-worker -o json 2>/dev/null || echo '{}')
         cur_metric=$(echo "${hpa_json}" | jq -r '.status.currentMetrics[0].resource.current.averageUtilization // .status.currentMetrics[0].pods.current.averageValue // "n/a"' 2>/dev/null)
         target=$(echo "${hpa_json}" | jq -r '.spec.metrics[0].resource.target.averageUtilization // .spec.metrics[0].pods.target.averageValue // "n/a"' 2>/dev/null)
@@ -65,15 +65,15 @@ log_info "起始: replicas=${INITIAL_REPLICAS}, HPA range=[${INITIAL_HPA_MIN}..$
 TIMELINE_PID=$!
 trap "kill ${TIMELINE_PID} 2>/dev/null || true" EXIT
 
-# 跑负载(后台)
-LOAD_PROMPT="写一个完整的故事,要求情节起伏,人物丰满,500 字左右"
-log_info "开始跑负载..."
+# Run load (background)
+LOAD_PROMPT="Write a complete story with vivid plot and well-developed characters, around 500 words"
+log_info "Starting load..."
 load_start_ts=$(date +%s)
 (
     pids=()
     end=$((load_start_ts + LOAD_DURATION))
     while [ "$(date +%s)" -lt "${end}" ]; do
-        # 维持 LOAD_CONCURRENCY 个并发请求
+        # Maintain LOAD_CONCURRENCY concurrent requests
         while [ ${#pids[@]} -lt ${LOAD_CONCURRENCY} ] && [ "$(date +%s)" -lt "${end}" ]; do
             (
                 curl -fsS --max-time 60 \
@@ -86,7 +86,7 @@ load_start_ts=$(date +%s)
             ) &
             pids+=($!)
         done
-        # 清理已完成的
+        # Clean up completed requests
         new_pids=()
         for pid in "${pids[@]}"; do
             kill -0 "$pid" 2>/dev/null && new_pids+=("$pid")
@@ -98,28 +98,28 @@ load_start_ts=$(date +%s)
 ) &
 LOAD_PID=$!
 
-# 等负载结束
+# Wait for load to finish
 wait ${LOAD_PID} 2>/dev/null || true
 load_end_ts=$(date +%s)
-log_info "负载结束(用时 $((load_end_ts - load_start_ts))s),再观察 60 秒看 HPA 缩容..."
+log_info "Load complete (duration $((load_end_ts - load_start_ts))s), observing 60 seconds for scale-down..."
 sleep 60
 
-# 停 timeline
+# Stop timeline
 kill ${TIMELINE_PID} 2>/dev/null || true
 wait ${TIMELINE_PID} 2>/dev/null || true
 
-# 分析 timeline:看是否扩过容
+# Analyze timeline: check if scaled up
 PEAK_REPLICAS=$(awk -F, 'NR>1 && $3 ~ /^[0-9]+$/ { if ($3 > max) max = $3 } END { print max+0 }' "${TIMELINE}")
 FINAL_REPLICAS=$(kubectl get deployment -n llm vllm-worker -o jsonpath='{.status.replicas}' 2>/dev/null || echo "?")
 
-# 判断
+# Determine if HPA triggered
 if [ "${PEAK_REPLICAS}" -gt "${INITIAL_REPLICAS}" ]; then
     HPA_TRIGGERED="true"
 else
     HPA_TRIGGERED="false"
 fi
 
-# 写汇总
+# Write summary
 {
     echo "{"
     echo "  \"test\": \"04_hpa\","
@@ -142,7 +142,7 @@ fi
     echo "final_replicas:   ${FINAL_REPLICAS}"
     echo "hpa_triggered:    ${HPA_TRIGGERED}"
     echo
-    echo "(timeline 在 ${TIMELINE},每 5 秒一行,可用 column -t -s, 看)"
+    echo "(Timeline at ${TIMELINE}, one line every 5 seconds, use: column -t -s, to view)"
 } >> "${LOG}"
 
 echo
@@ -151,9 +151,9 @@ log_info "  initial replicas: ${INITIAL_REPLICAS}"
 log_info "  peak replicas:    ${PEAK_REPLICAS}"
 log_info "  final replicas:   ${FINAL_REPLICAS}"
 if [ "${HPA_TRIGGERED}" = "true" ]; then
-    log_info "  ✅ HPA 成功触发了扩容"
+    log_info "  ✅ HPA successfully triggered scale-up"
 else
-    log_warn "  ⚠️  HPA 没扩容(可能负载强度不够 / metrics-server 没就绪 / HPA 阈值过高)"
+    log_warn "  ⚠️  HPA did not scale up (load too light / metrics-server not ready / HPA threshold too high)"
 fi
 log_info "  timeline: ${TIMELINE}"
 log_info "  json:     ${JSON}"

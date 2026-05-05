@@ -5,29 +5,29 @@ metadata:
   namespace: argocd
   annotations:
     # ArgoCD Image Updater configuration
-    # 启用 Image Updater（必须！没有这个 Image Updater 会忽略此 Application）
+    # Enable Image Updater (required! Without this, Image Updater will ignore this Application)
     argocd-image-updater.argoproj.io/enabled: "true"
-    # 集中管理所有服务的镜像更新配置
-    # image-list 格式：单行，用逗号分隔（更稳妥，避免 YAML/CRLF 解析问题）
-    # 注意：llm-api 是 gateway 与原 router 合并后的统一服务
-    # 当前仅支持 vLLM,TensorRT/BERT 已移除
+    # Centralized management of image update configuration for all services
+    # image-list format: single line, comma-separated (safer, avoids YAML/CRLF parsing issues)
+    # Note: llm-api is the unified service after merging gateway and the original router
+    # Currently only vLLM is supported; TensorRT/BERT have been removed
     argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway,vllm-worker=ghcr.io/johnny-dai-git/llm-deployment/vllm-worker,web=ghcr.io/johnny-dai-git/llm-deployment/web
-    # llm-api (gateway+router merged) 配置
+    # llm-api (gateway+router merged) configuration
     argocd-image-updater.argoproj.io/llm-api.update-strategy: name
     argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
-    # vllm-worker 配置
+    # vllm-worker configuration
     argocd-image-updater.argoproj.io/vllm-worker.update-strategy: name
     argocd-image-updater.argoproj.io/vllm-worker.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
-    # web 配置
+    # web configuration
     argocd-image-updater.argoproj.io/web.update-strategy: name
     argocd-image-updater.argoproj.io/web.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
-    # ArgoCD 写回配置（推荐：直接 patch Application，无需 Git token）
-    # ⚠️ 重要：使用 argocd 模式可以避免 GitHub Push Protection 问题
-    # Image Updater 会直接 patch ArgoCD Application，然后 ArgoCD 自动同步 Deployment
+    # ArgoCD write-back configuration (recommended: patch Application directly, no need for Git token)
+    # ⚠️ Important: using argocd mode can avoid GitHub Push Protection issues
+    # Image Updater will directly patch ArgoCD Application, then ArgoCD auto-syncs Deployment
     argocd-image-updater.argoproj.io/write-back-method: argocd
-  # 注意：业务 Application 不建议使用 finalizer
-  # 原因：删除时容易卡住，不利于快速回滚/重建环境
-  # 如果需要"删 Application 就删全部业务资源"，可以保留；否则建议移除
+  # Note: business Application is not recommended to use finalizer
+  # Reason: easy to hang during deletion, not conducive to quick rollback/environment rebuild
+  # Keep if "deleting Application deletes all business resources"; otherwise recommended to remove
   # finalizers:
   #   - resources-finalizer.argocd.argoproj.io
 spec:
@@ -42,12 +42,14 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: llm
-  # ============ HPA 与 ArgoCD 共存 ============
-  # vllm-worker / llm-api 都有 HPA。HPA 会动态修改 Deployment.spec.replicas,
-  # 但 ArgoCD selfHeal 会看到 live state 跟 git 的 replicas: 1 有差异,
-  # 立刻把它改回 1 → 跟 HPA 形成拉锯,HPA 永远扩不上去。
-  # 标准做法是让 ArgoCD 忽略 replicas 字段,把这个字段完全交给 HPA。
-  # 见: https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/#system-level-configuration
+  # ============ HPA + ArgoCD coexistence ============
+  # vllm-worker / llm-api both have HPA. HPA dynamically mutates
+  # Deployment.spec.replicas, but ArgoCD selfHeal sees live state diverging
+  # from git's `replicas: 1` and immediately reverts it back to 1 — fighting
+  # HPA in a tug-of-war so it never gets to scale up.
+  # Standard fix: tell ArgoCD to ignore the replicas field and leave it
+  # entirely to HPA.
+  # See: https://argo-cd.readthedocs.io/en/stable/user-guide/diffing/#system-level-configuration
   ignoreDifferences:
     - group: apps
       kind: Deployment

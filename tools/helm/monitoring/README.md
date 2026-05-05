@@ -1,109 +1,110 @@
 # Monitoring Helm Charts
 
-本目录包含使用 Helm 管理监控组件的配置文件。
+This directory contains configuration files for managing monitoring components with Helm.
 
-## 文件说明
+## File descriptions
 
-- `kps-values.yaml`: kube-prometheus-stack 的 Helm values 配置
-- `dcgm/values.yaml`: dcgm-exporter 的 Helm values 配置
+- `kps-values.yaml`: Helm values configuration for kube-prometheus-stack
+- `dcgm/values.yaml`: Helm values configuration for dcgm-exporter
 
-## 迁移步骤
+## Migration steps
 
-### Step 0: 停用现有 YAML Application
+### Step 0: Disable existing YAML Application
 
-在 ArgoCD UI 中：
-1. 找到 `llm-platform-monitoring` Application
-2. 点击 "Delete"（不要勾选 "Cascade"）
-3. 这样会停止管理旧资源，但不会删除它们
+In ArgoCD UI:
+1. Find the `llm-platform-monitoring` Application
+2. Click "Delete" (do not check "Cascade")
+3. This will stop managing old resources but not delete them
 
-### Step 1: 应用新的 Helm Applications
+### Step 1: Apply new Helm Applications
 
 ```bash
-# 应用 kube-prometheus-stack
+# Apply kube-prometheus-stack
 kubectl apply -f tools/config/argocd-apps/monitoring-helm-application.yaml
 
-# 应用 dcgm-exporter
+# Apply dcgm-exporter
 kubectl apply -f tools/config/argocd-apps/dcgm-helm-application.yaml
 ```
 
-### Step 2: 在 ArgoCD UI 中同步
+### Step 2: Sync in ArgoCD UI
 
-1. 打开 ArgoCD UI
-2. 找到新创建的 Applications：
+1. Open ArgoCD UI
+2. Find newly created Applications:
    - `llm-platform-monitoring-helm`
    - `dcgm-exporter-helm`
-3. 点击 "Sync" 按钮
+3. Click "Sync" button
 
-### Step 3: 验证
+### Step 3: Verify
 
 ```bash
-# 检查 Pod 状态
+# Check Pod status
 kubectl get pods -n monitoring
 
-# 检查 Grafana
+# Check Grafana
 kubectl get ingress -n monitoring
 
-# 访问 Grafana
+# Access Grafana
 # http://<hostNetwork-IP>/grafana
-# 用户名: admin
-# 密码: admin
+# username: admin
+# password: admin
 ```
 
-## 本地测试（可选）
+## Local testing (optional)
 
-如果想在应用 ArgoCD 之前本地测试：
+If you want to test locally before applying ArgoCD:
 
 ```bash
-# 添加 Helm 仓库
+# Add Helm repositories
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo add nvidia https://nvidia.github.io/dcgm-exporter/helm-charts
 helm repo update
 
-# 安装 kube-prometheus-stack
+# Install kube-prometheus-stack
 helm install monitoring prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace \
   -f tools/helm/monitoring/kps-values.yaml
 
-# 安装 dcgm-exporter
+# Install dcgm-exporter
 helm install dcgm nvidia/dcgm-exporter \
   -n monitoring \
   -f tools/helm/monitoring/dcgm/values.yaml
 ```
 
-## 清理旧资源（可选）
+## Clean up old resources (optional)
 
-等 Helm chart 部署成功并验证后，可以手动清理旧资源：
+After Helm chart deployment succeeds and is verified, you can manually clean up old resources:
 
 ```bash
-# 只删除旧的 Deployment/Service/Ingress，保留 PVC
+# Only delete old Deployment/Service/Ingress, retain PVC
 kubectl delete deploy grafana prometheus -n monitoring --ignore-not-found
 kubectl delete svc grafana prometheus -n monitoring --ignore-not-found
 kubectl delete ingress grafana-ingress -n monitoring --ignore-not-found
 ```
 
-## 配置说明
+## Configuration notes
 
 ### Grafana
-- 子路径: `/grafana`
-- Ingress: 使用 nginx，保留 `/grafana` 前缀
+- Subpath: `/grafana`
+- Ingress: Use nginx, retain `/grafana` prefix
 - Persistence: 10Gi PVC
 - Node Selector: `system: "true"`
 
 ### Prometheus
-- Ingress: `/prometheus`（可选）
+- Ingress: `/prometheus` (optional)
 - Persistence: 50Gi PVC
 - Retention: 30d
 - Node Selector: `system: "true"`
-- ServiceMonitor / PodMonitor / PrometheusRule selector 全部放开（任意
-  namespace、任意 label 都会被发现）。业务指标采集靠下面这些资源:
+- ServiceMonitor / PodMonitor / PrometheusRule selector fully open (any
+  namespace, any label will be discovered). Business metric collection uses
+  these resources:
     - `tools/llm/api/api-servicemonitor.yaml`     —— llm-api `/metrics`
-    - `tools/llm/workers/vllm/vllm-servicemonitor.yaml` —— vLLM 内置指标
-    - DCGM exporter 自带的 ServiceMonitor (Helm chart `serviceMonitor.enabled: true`)
-- ⚠️ 注意:Pod 模板里的 `prometheus.io/*` annotation **对 kube-prometheus-stack
-  不生效**。这些 annotation 是给"经典 Prometheus + 静态 scrape config"用的,
-  本项目用的是 prometheus-operator 模式,只认 `ServiceMonitor` / `PodMonitor` CRD。
+    - `tools/llm/workers/vllm/vllm-servicemonitor.yaml` —— vLLM built-in metrics
+    - DCGM exporter's built-in ServiceMonitor (Helm chart `serviceMonitor.enabled: true`)
+- ⚠️ Note: `prometheus.io/*` annotations in Pod templates **do not work with kube-prometheus-stack**.
+  These annotations are for "classic Prometheus + static scrape config", this project uses
+  prometheus-operator mode, which only recognizes `ServiceMonitor` / `PodMonitor` CRD.
 
 ### DCGM Exporter
 - Runtime Class: `nvidia`
-- ServiceMonitor: 已启用，自动被 Prometheus 发现
-- Node Selector: `system: "true"` 和 `gpu-node: "true"`
+- ServiceMonitor: Already enabled, auto-discovered by Prometheus
+- Node Selector: `system: "true"` and `gpu-node: "true"`

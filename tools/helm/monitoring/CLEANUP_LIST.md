@@ -1,10 +1,10 @@
-# 清理清单：Helm 迁移后可删除的文件
+# Cleanup checklist: Files that can be deleted after Helm migration
 
-⚠️ **重要提示**：只有在 Helm chart 部署成功并验证正常工作后，才删除这些文件。
+⚠️ **Important**: Only delete these files after Helm chart deployment is successful and verified to be working.
 
-## 可以删除的文件列表
+## List of files that can be deleted
 
-### Grafana 相关文件
+### Grafana-related files
 ```
 tools/config/monitoring/grafana/grafana-deployment.yaml
 tools/config/monitoring/grafana/grafana-service.yaml
@@ -14,7 +14,7 @@ tools/config/monitoring/grafana/grafana-datasource-configmap.yaml
 tools/config/monitoring/grafana/grafana-admin-secret.yaml
 ```
 
-### Prometheus 相关文件
+### Prometheus-related files
 ```
 tools/config/monitoring/prometheus/prometheus-deployment.yaml
 tools/config/monitoring/prometheus/prometheus-service.yaml
@@ -25,7 +25,7 @@ tools/config/monitoring/prometheus/prometheus-clusterrole.yaml
 tools/config/monitoring/prometheus/prometheus-clusterrolebinding.yaml
 ```
 
-### Exporters 相关文件
+### Exporter-related files
 ```
 tools/config/monitoring/exporters/node-exporter.yaml
 tools/config/monitoring/exporters/kube-state-metrics.yaml
@@ -37,51 +37,51 @@ tools/config/monitoring/exporters/dcgm-exporter.yaml
 tools/config/monitoring/exporters/dcgm-exporter-service.yaml
 ```
 
-### ArgoCD Application（旧的）
+### ArgoCD Application (legacy)
 ```
 tools/config/argocd-apps/monitoring-application.yaml
 ```
 
-## 清理步骤
+## Cleanup steps
 
-### Step 1: 验证 Helm 部署
+### Step 1: Verify Helm deployment
 
 ```bash
-# 检查所有 Pod 是否运行正常
+# Check if all Pods are running normally
 kubectl get pods -n monitoring
 
-# 检查 Grafana 是否可以访问
+# Check if Grafana is accessible
 kubectl get ingress -n monitoring
 
-# 检查 Prometheus 是否可以访问
+# Check if Prometheus is accessible
 kubectl get svc -n monitoring | grep prometheus
 ```
 
-### Step 2: 从 kustomization.yaml 中移除
+### Step 2: Remove from kustomization.yaml
 
-编辑 `tools/config/monitoring/kustomization.yaml`，移除所有上述资源的引用。
+Edit `tools/config/monitoring/kustomization.yaml` and remove all references to the above resources.
 
-### Step 3: 删除文件
+### Step 3: Delete files
 
 ```bash
-# 删除 Grafana 文件
+# Delete Grafana files
 rm -f tools/config/monitoring/grafana/*.yaml
 
-# 删除 Prometheus 文件
+# Delete Prometheus files
 rm -f tools/config/monitoring/prometheus/*.yaml
 
-# 删除 Exporters 文件（保留目录结构，如果以后需要）
+# Delete Exporters files (keep directory structure if needed later)
 rm -f tools/config/monitoring/exporters/node-exporter.yaml
 rm -f tools/config/monitoring/exporters/kube-state-metrics*.yaml
-# 注意：dcgm-exporter 由 Helm 管理，但可能需要保留自定义配置
+# Note: dcgm-exporter is managed by Helm but may need to keep custom configuration
 
-# 删除旧的 ArgoCD Application
+# Delete old ArgoCD Application
 rm -f tools/config/argocd-apps/monitoring-application.yaml
 ```
 
-### Step 4: 更新 kustomization.yaml
+### Step 4: Update kustomization.yaml
 
-如果 `kustomization.yaml` 中还有其他资源（如 dcgm-exporter 的自定义配置），可以创建一个新的简化版本：
+If there are other resources in `kustomization.yaml` (e.g., custom dcgm-exporter configuration), create a simplified version:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -90,11 +90,11 @@ kind: Kustomization
 namespace: monitoring
 
 resources:
-  # 如果有其他需要保留的资源，在这里列出
-  # 例如：自定义的 dcgm-exporter 配置（如果 Helm chart 不满足需求）
+  # List other resources that need to be retained
+  # Example: custom dcgm-exporter configuration (if Helm chart does not meet requirements)
 ```
 
-### Step 5: 提交更改
+### Step 5: Commit changes
 
 ```bash
 git add -A
@@ -102,24 +102,24 @@ git commit -m "Remove old YAML files after Helm migration"
 git push
 ```
 
-## 注意事项
+## Notes
 
-1. **PVC 数据**：删除 YAML 文件不会删除 PVC 中的数据。Helm chart 会创建新的 PVC，如果需要迁移数据，需要手动操作。
+1. **PVC data**: Deleting YAML files will not delete data in PVC. Helm chart will create new PVC; if data migration is needed, manual operation is required.
 
-2. **dcgm-exporter**：如果使用 Helm chart 管理 dcgm-exporter，可以删除旧的 YAML。如果 Helm chart 不满足需求，可以保留自定义配置。
+2. **dcgm-exporter**: If using Helm chart to manage dcgm-exporter, old YAML can be deleted. If Helm chart does not meet requirements, keep custom configuration.
 
-3. **备份**：建议在删除前先备份整个 `monitoring` 目录：
+3. **Backup**: It is recommended to backup the entire `monitoring` directory before deletion:
    ```bash
    cp -r tools/config/monitoring tools/config/monitoring.backup
    ```
 
-4. **验证**：删除文件后，确保 ArgoCD 不再尝试同步这些资源，避免冲突。
+4. **Verification**: After deleting files, ensure ArgoCD no longer attempts to sync these resources to avoid conflicts.
 
-## 保留的文件
+## Files to retain
 
-以下文件应该保留：
+The following files should be retained:
 
-- `tools/helm/monitoring/kps-values.yaml` - Helm values 配置
-- `tools/helm/monitoring/dcgm/values.yaml` - DCGM Helm values 配置
-- `tools/config/argocd-apps/monitoring-helm-application.yaml` - 新的 Helm Application
+- `tools/helm/monitoring/kps-values.yaml` - Helm values configuration
+- `tools/helm/monitoring/dcgm/values.yaml` - DCGM Helm values configuration
+- `tools/config/argocd-apps/monitoring-helm-application.yaml` - New Helm Application
 - `tools/config/argocd-apps/dcgm-helm-application.yaml` - DCGM Helm Application

@@ -1,14 +1,15 @@
 #!/bin/bash
 # ================================================================
-# 02_latency.sh — 延迟基线测试 (P50/P90/P95/P99)
+# 02_latency.sh — Latency baseline test (P50/P90/P95/P99)
 # ----------------------------------------------------------------
-# 在三个并发级别下各发 N 个请求,记录每个请求的端到端 latency,
-# 用 awk 计算分位数。这是衡量"用户感知延迟"最直接的指标。
+# Send N requests at three concurrency levels, record end-to-end latency
+# for each request, compute percentiles with awk. This is the most direct
+# metric for measuring "user-perceived latency".
 #
-# 测试矩阵:
-#   并发 1   x  N 个请求   → 串行,反映单请求最优延迟
-#   并发 4   x  N 个请求   → 轻负载下的延迟稳定性
-#   并发 8   x  N 个请求   → 中负载下的尾延迟(P95/P99 会涨)
+# Test matrix:
+#   Concurrency 1   x  N requests   → serial, reflects optimal single-request latency
+#   Concurrency 4   x  N requests   → latency stability under light load
+#   Concurrency 8   x  N requests   → tail latency under medium load (P95/P99 increase)
 # ================================================================
 set -uo pipefail
 
@@ -19,30 +20,30 @@ source "${SCRIPT_DIR}/lib/common.sh"
 LOG="${RESULTS_DIR}/02_latency.log"
 JSON="${RESULTS_DIR}/02_latency.json"
 
-# 每个并发级别下的请求数(可调,默认 30 节省时间)
+# Number of requests per concurrency level (tunable, default 30 to save time)
 N_PER_LEVEL="${LATENCY_REQUESTS:-30}"
-PROMPT="解释一下什么是机器学习,简短一些"
+PROMPT="Explain machine learning briefly"
 MAX_TOKENS=80
 
 log_step "02 LATENCY"
-log_info "每个并发级别发送 ${N_PER_LEVEL} 个请求"
+log_info "Send ${N_PER_LEVEL} requests per concurrency level"
 log_info "prompt: \"${PROMPT}\""
 log_info "max_tokens: ${MAX_TOKENS}"
 echo
 
-# 跑一组并发,把所有 latency 输出到一个文件
+# Run one concurrency level, output all latencies to a file
 run_concurrency_level() {
     local conc="$1"
     local raw_file="${RESULTS_DIR}/02_latency_c${conc}.raw"
     local err_count=0
 
-    log_info "→ 并发 ${conc} 跑 ${N_PER_LEVEL} 个请求..."
+    log_info "→ Concurrency ${conc}: sending ${N_PER_LEVEL} requests..."
     > "${raw_file}"
 
     local pids=()
     local i=0
     local batch=0
-    # 用 batch 模式:每次发 conc 个并发,wait,再下一批
+    # Batch mode: send conc concurrent requests, wait, then next batch
     while [ "${i}" -lt "${N_PER_LEVEL}" ]; do
         for ((j=0; j<conc && i<N_PER_LEVEL; j++, i++)); do
             (
@@ -60,12 +61,12 @@ run_concurrency_level() {
         wait "${pids[@]}" 2>/dev/null || true
         pids=()
         batch=$((batch + 1))
-        # 进度提示(走 stderr,避免污染函数 stdout 返回值)
+        # Progress indicator (to stderr to avoid polluting function stdout)
         printf "." >&2
     done
     echo >&2
 
-    # 算分位数
+    # Compute percentiles
     local stats
     stats=$(cat "${raw_file}" | compute_stats)
     log_info "  $(echo "${stats}" | jq -c '{count, p50_ms, p95_ms, p99_ms, mean_ms}')"
@@ -79,14 +80,14 @@ run_concurrency_level() {
     echo "${stats}"
 }
 
-# 跑三组
+# Run three concurrency levels
 declare -A all_stats
 all_stats[1]=$(run_concurrency_level 1)
 all_stats[4]=$(run_concurrency_level 4)
 all_stats[8]=$(run_concurrency_level 8)
 
-# 汇总 JSON — 用 jq -n 构造,避免手拼字符串遇到 stats 含 newline
-# 时 echo 把多行内容塞到一个 JSON 字段值里导致解析失败的问题
+# Summary JSON — use jq -n to construct, avoiding manual string concatenation
+# that could break if stats contains newlines
 jq -n \
     --arg prompt "${PROMPT}" \
     --argjson reqs "${N_PER_LEVEL}" \

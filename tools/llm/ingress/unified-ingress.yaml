@@ -6,9 +6,9 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$2
     nginx.ingress.kubernetes.io/use-regex: "true"
-    # SSE 流式输出必需:让 ingress-nginx 不缓冲响应,token 一来就转发
+    # SSE streaming output required: disable ingress-nginx response buffering, forward tokens as they arrive
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
-    # LLM 长生成可能耗时较久,默认 60s 不够
+    # LLM long generation may take longer time, default 60s is not enough
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
 spec:

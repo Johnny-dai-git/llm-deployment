@@ -17,22 +17,22 @@ spec:
       - name: nginx
         image: nginx:alpine
         ports:
-        - containerPort: 80           # ✅ 必须
+        - containerPort: 80           # ✅ Required
         volumeMounts:
         - name: html
           mountPath: /usr/share/nginx/html
         # ========= Probes =========
-        # nginx + 静态 ConfigMap,启动很快(<1s)
-        # startupProbe 主要防御 ConfigMap 挂载偶尔慢的边缘情况
+        # nginx + static ConfigMap, starts very fast (<1s)
+        # startupProbe mainly guards against occasional slow ConfigMap mounts
         startupProbe:
           httpGet:
             path: /
             port: 80
           periodSeconds: 3
           timeoutSeconds: 3
-          failureThreshold: 5          # ~15s 启动预算
+          failureThreshold: 5          # ~15s startup budget
 
-        readinessProbe:                # 决定是否接流量
+        readinessProbe:                # Decide whether to accept traffic
           httpGet:
             path: /
             port: 80
@@ -40,7 +40,7 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 3
 
-        livenessProbe:                 # nginx 卡死时让 K8s 重启它
+        livenessProbe:                 # Restart if nginx hangs
           httpGet:
             path: /
             port: 80

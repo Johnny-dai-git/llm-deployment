@@ -1,23 +1,23 @@
 #!/bin/bash
 # ================================================================
-# 06_realistic_load.sh — 真实负载模拟
+# 06_realistic_load.sh — Realistic load simulation
 # ----------------------------------------------------------------
-# 跟 02/03 不同的地方:
-#   - 02/03 用同一个 prompt 反复打 → vLLM prefix cache 100% 命中,
-#     测出来的 prompt 处理时间几乎为 0,不真实
-#   - 06 从 data/prompts.txt 随机抽 prompt → 每次都不一样,
-#     prefix cache 命中率接近 0%,数据贴近生产
+# Differences from 02/03:
+#   - 02/03 use the same prompt repeatedly → vLLM prefix cache 100% hit,
+#     measured prompt processing time is nearly 0, unrealistic
+#   - 06 randomly sample prompts from data/prompts.txt → each different,
+#     prefix cache hit rate ~0%, data reflects production
 #
-# 测了什么:
-#   - 真实 P50/P95/P99 延迟(无 cache 加速)
-#   - 真实 prompt token / completion token / total 吞吐
-#   - 错误率
-#   - 不同 prompt 长度的延迟分布(用 awk 拆分 short/medium/long)
+# What's tested:
+#   - Real P50/P95/P99 latency (no cache acceleration)
+#   - Real prompt token / completion token / total throughput
+#   - Error rate
+#   - Latency distribution by prompt length (split short/medium/long with awk)
 #
-# 用法:
-#   ./06_realistic_load.sh                      # 默认 5 分钟,并发 8
-#   REALISTIC_DURATION=600 ./06_realistic_load.sh   # 跑 10 分钟
-#   REALISTIC_CONCURRENCY=16 ./06_realistic_load.sh # 并发 16
+# Usage:
+#   ./06_realistic_load.sh                      # default 5 min, concurrency 8
+#   REALISTIC_DURATION=600 ./06_realistic_load.sh   # run 10 min
+#   REALISTIC_CONCURRENCY=16 ./06_realistic_load.sh # concurrency 16
 # ================================================================
 set -uo pipefail
 
@@ -29,19 +29,19 @@ LOG="${RESULTS_DIR}/06_realistic.log"
 JSON="${RESULTS_DIR}/06_realistic.json"
 RAW="${RESULTS_DIR}/06_realistic.raw"
 
-DURATION="${REALISTIC_DURATION:-300}"        # 默认 5 分钟
+DURATION="${REALISTIC_DURATION:-300}"        # Default 5 minutes
 CONCURRENCY="${REALISTIC_CONCURRENCY:-8}"
 PROMPT_FILE="${REALISTIC_PROMPT_FILE:-${SCRIPT_DIR}/data/prompts.txt}"
 
-# max_tokens 在每个请求随机化(模拟用户问题千差万别)
+# max_tokens randomized per request (simulate variety of user questions)
 MAX_TOKENS_MIN=50
 MAX_TOKENS_MAX=400
 
-log_step "06 REALISTIC LOAD (随机 prompt + 随机 max_tokens)"
+log_step "06 REALISTIC LOAD (random prompt + random max_tokens)"
 
-# --- 加载 prompt pool(过滤注释 + 空行) ---
+# --- Load prompt pool (filter comments + empty lines) ---
 if [ ! -f "${PROMPT_FILE}" ]; then
-    log_error "prompt 文件不存在: ${PROMPT_FILE}"
+    log_error "Prompt file not found: ${PROMPT_FILE}"
     exit 2
 fi
 
@@ -50,17 +50,17 @@ grep -vE '^\s*(#|$)' "${PROMPT_FILE}" > "${PROMPT_POOL}"
 POOL_SIZE=$(wc -l < "${PROMPT_POOL}")
 
 if [ "${POOL_SIZE}" -lt 5 ]; then
-    log_error "prompt pool 太小 (${POOL_SIZE} 行),建议 >= 20"
+    log_error "Prompt pool too small (${POOL_SIZE} lines), recommend >= 20"
     exit 3
 fi
 
-log_info "Prompt pool:    ${POOL_SIZE} 个(${PROMPT_FILE})"
+log_info "Prompt pool:    ${POOL_SIZE} prompts (${PROMPT_FILE})"
 log_info "Concurrency:    ${CONCURRENCY}"
 log_info "Duration:       ${DURATION}s"
-log_info "max_tokens:     随机 ${MAX_TOKENS_MIN}~${MAX_TOKENS_MAX}"
+log_info "max_tokens:     random ${MAX_TOKENS_MIN}~${MAX_TOKENS_MAX}"
 echo
 
-# 起点
+# Starting point
 > "${RAW}"
 > "${RESULTS_DIR}/06_realistic_errors.log"
 
@@ -68,16 +68,16 @@ start_ts=$(date +%s)
 end_ts=$((start_ts + DURATION))
 last_progress=${start_ts}
 
-# 单个请求的 worker:从 pool 抽一个 prompt,随机 max_tokens,发请求,记录结果
+# Single request worker: sample one prompt from pool, random max_tokens, send request, record result
 do_one_request() {
-    # 随机选一行 prompt(shuf 是 GNU coreutils 的标准命令)
+    # Randomly select one line prompt (shuf is standard GNU coreutils)
     local prompt
     prompt=$(shuf -n 1 "${PROMPT_POOL}")
 
-    # 随机 max_tokens
+    # Random max_tokens
     local mt=$((RANDOM % (MAX_TOKENS_MAX - MAX_TOKENS_MIN + 1) + MAX_TOKENS_MIN))
 
-    # prompt 类别(用长度近似分桶,方便后续分析)
+    # Prompt category (use length as approximation for bucketing, convenient for analysis)
     local plen=${#prompt}
     local bucket="medium"
     [ ${plen} -lt 30 ] && bucket="short"
@@ -99,7 +99,7 @@ do_one_request() {
     req_end=$(date +%s%N)
     lat_ms=$(( (req_end - req_start) / 1000000 ))
 
-    # 解析 response
+    # Parse response
     local prompt_t comp_t total_t finish_reason
     prompt_t=$(echo "${resp}" | jq -r '.usage.prompt_tokens // "ERR"' 2>/dev/null)
     comp_t=$(echo "${resp}"   | jq -r '.usage.completion_tokens // "ERR"' 2>/dev/null)
@@ -107,24 +107,24 @@ do_one_request() {
     finish_reason=$(echo "${resp}" | jq -r '.choices[0].finish_reason // "ERR"' 2>/dev/null)
 
     if [ "${prompt_t}" = "ERR" ]; then
-        # 失败(超时 / 错误响应 / 解析失败)
+        # Failed (timeout / error response / parse failure)
         echo "FAIL ${lat_ms} ${bucket}" >> "${RAW}"
         echo "$(date '+%T') failed prompt=\"${prompt:0:60}\"" >> "${RESULTS_DIR}/06_realistic_errors.log"
     else
-        # 一行 = "OK lat_ms bucket prompt_tokens completion_tokens total_tokens max_tokens finish_reason"
+        # One line = "OK lat_ms bucket prompt_tokens completion_tokens total_tokens max_tokens finish_reason"
         echo "OK ${lat_ms} ${bucket} ${prompt_t} ${comp_t} ${total_t} ${mt} ${finish_reason}" >> "${RAW}"
     fi
 }
 
-# 用文件锁 + 简单 worker pool 维持 N 个并发
-log_info "开始跑负载..."
+# Use file lock + simple worker pool to maintain N concurrent requests
+log_info "Starting load..."
 pids=()
 while [ "$(date +%s)" -lt "${end_ts}" ]; do
     while [ ${#pids[@]} -lt ${CONCURRENCY} ] && [ "$(date +%s)" -lt "${end_ts}" ]; do
         do_one_request &
         pids+=($!)
     done
-    # 清理已完成的 pid
+    # Clean up completed pids
     new_pids=()
     for pid in "${pids[@]}"; do
         kill -0 "$pid" 2>/dev/null && new_pids+=("$pid")
@@ -132,14 +132,14 @@ while [ "$(date +%s)" -lt "${end_ts}" ]; do
     pids=("${new_pids[@]}")
     sleep 0.2
 
-    # 进度提示(每分钟)
+    # Progress indicator (every minute)
     now=$(date +%s)
     if [ $((now - last_progress)) -ge 60 ]; then
         ok=$(awk '$1=="OK"' "${RAW}" | wc -l)
         err=$(awk '$1=="FAIL"' "${RAW}" | wc -l)
         elapsed=$((now - start_ts))
         remaining=$((end_ts - now))
-        log_info "  t=${elapsed}s  OK=${ok}  ERR=${err}  剩 ${remaining}s"
+        log_info "  t=${elapsed}s  OK=${ok}  ERR=${err}  remaining ${remaining}s"
         last_progress=${now}
     fi
 done
@@ -148,20 +148,20 @@ wait "${pids[@]}" 2>/dev/null || true
 end_real=$(date +%s)
 wall=$((end_real - start_ts))
 
-# ============ 分析 ============
+# ============ Analysis ============
 ok_count=$(awk '$1=="OK"' "${RAW}" | wc -l)
 err_count=$(awk '$1=="FAIL"' "${RAW}" | wc -l)
 total_count=$((ok_count + err_count))
 
-# 整体 latency stats(所有 OK 请求)
+# Overall latency stats (all OK requests)
 overall_stats=$(awk '$1=="OK" {print $2}' "${RAW}" | compute_stats)
 
-# 按 bucket 分组的 latency(short/medium/long)
+# Latency by bucket (short/medium/long)
 short_stats=$(awk '$1=="OK" && $3=="short"  {print $2}' "${RAW}" | compute_stats)
 medium_stats=$(awk '$1=="OK" && $3=="medium" {print $2}' "${RAW}" | compute_stats)
 long_stats=$(awk '$1=="OK" && $3=="long"   {print $2}' "${RAW}" | compute_stats)
 
-# token 吞吐(基于 wall time)
+# Token throughput (based on wall time)
 totals=$(awk -v w="${wall}" '
 $1=="OK" {
     sum_p += $4
@@ -175,7 +175,7 @@ END {
 }
 ' "${RAW}")
 
-# finish_reason 分布(看模型是不是按 max_tokens 截断 vs 自然 EOS)
+# finish_reason distribution (check if model truncates at max_tokens vs natural EOS)
 finish_dist=$(awk '$1=="OK" {print $8}' "${RAW}" | sort | uniq -c | awk '{printf "{\"reason\":\"%s\",\"count\":%d}", $2, $1}' | paste -sd, -)
 
 err_rate=$(awk -v ok="${ok_count}" -v err="${err_count}" \
@@ -183,7 +183,7 @@ err_rate=$(awk -v ok="${ok_count}" -v err="${err_count}" \
 rps=$(awk -v t="${total_count}" -v w="${wall}" \
     'BEGIN {if (w==0) print 0; else printf "%.2f", t/w}')
 
-# ============ 写 JSON ============
+# ============ Write JSON ============
 jq -n \
     --argjson duration   "${wall}" \
     --argjson concurrency "${CONCURRENCY}" \
@@ -219,7 +219,7 @@ jq -n \
         finish_reason_distribution: $finish
     }' > "${JSON}"
 
-# ============ 输出 ============
+# ============ Output ============
 echo
 log_info "===== Summary ====="
 log_info "  duration:     ${wall}s"
@@ -227,10 +227,10 @@ log_info "  total reqs:   ${total_count}"
 log_info "  OK / ERR:     ${ok_count} / ${err_count}  (rate=${err_rate}%)"
 log_info "  RPS:          ${rps}"
 echo
-log_info "  整体延迟(ms):  $(echo "${overall_stats}" | jq -c '{p50_ms, p95_ms, p99_ms, mean_ms}' 2>/dev/null)"
-log_info "  short prompt:  $(echo "${short_stats}"  | jq -c '{count, p50_ms, p95_ms}'           2>/dev/null)"
-log_info "  medium prompt: $(echo "${medium_stats}" | jq -c '{count, p50_ms, p95_ms}'           2>/dev/null)"
-log_info "  long prompt:   $(echo "${long_stats}"   | jq -c '{count, p50_ms, p95_ms}'           2>/dev/null)"
+log_info "  overall latency (ms):  $(echo "${overall_stats}" | jq -c '{p50_ms, p95_ms, p99_ms, mean_ms}' 2>/dev/null)"
+log_info "  short prompt:          $(echo "${short_stats}"  | jq -c '{count, p50_ms, p95_ms}'           2>/dev/null)"
+log_info "  medium prompt:         $(echo "${medium_stats}" | jq -c '{count, p50_ms, p95_ms}'           2>/dev/null)"
+log_info "  long prompt:           $(echo "${long_stats}"   | jq -c '{count, p50_ms, p95_ms}'           2>/dev/null)"
 echo
 log_info "  $(echo "${totals}" | jq -c '{output_tok_per_sec, total_tok_per_sec}' 2>/dev/null)"
 log_info "  finish_reason:    [${finish_dist:-(no data)}]"

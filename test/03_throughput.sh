@@ -1,18 +1,19 @@
 #!/bin/bash
 # ================================================================
-# 03_throughput.sh — 吞吐量测试 (tokens/sec)
+# 03_throughput.sh — Throughput test (tokens/sec)
 # ----------------------------------------------------------------
-# 在固定并发(8)下,跑不同 (prompt 长度, max_tokens) 组合,
-# 看 vllm 在不同负载特征下的 throughput。
+# At fixed concurrency (8), run different (prompt length, max_tokens)
+# combinations to observe vllm throughput across different load
+# characteristics.
 #
-# 关键指标:
-#   - 总耗时(秒)
-#   - 总生成 token 数(从 response.usage.completion_tokens 求和)
-#   - 输出 throughput = total_completion_tokens / wall_time_sec
-#   - 平均 latency
+# Key metrics:
+#   - Total elapsed time (seconds)
+#   - Total generated tokens (sum of response.usage.completion_tokens)
+#   - Output throughput = total_completion_tokens / wall_time_sec
+#   - Average latency
 #
-# 比 oha 这类通用工具更准:它们看的是 HTTP 字节,
-# 我们看的是真正的 LLM token 数。
+# More accurate than generic tools like oha: they measure HTTP bytes,
+# we measure actual LLM tokens.
 # ================================================================
 set -uo pipefail
 
@@ -27,10 +28,10 @@ CONCURRENCY="${THROUGHPUT_CONCURRENCY:-8}"
 N_PER_SCENARIO="${THROUGHPUT_REQUESTS:-16}"
 
 log_step "03 THROUGHPUT"
-log_info "并发 ${CONCURRENCY},每个场景跑 ${N_PER_SCENARIO} 个请求"
+log_info "Concurrency ${CONCURRENCY}, ${N_PER_SCENARIO} requests per scenario"
 echo
 
-# 一次跑一个场景,return JSON
+# Run one scenario at a time, return JSON
 run_scenario() {
     local name="$1"
     local prompt="$2"
@@ -38,7 +39,7 @@ run_scenario() {
 
     log_info "→ scenario: ${name} (max_tokens=${max_tokens})"
 
-    # 累加器在文件里(避免子 shell 修改父变量丢失)
+    # Accumulator in file (avoid subshell variable loss)
     local results_file="${RESULTS_DIR}/03_${name}.raw"
     > "${results_file}"
 
@@ -70,7 +71,7 @@ run_scenario() {
                 comp_t=$(echo "${resp}" | jq -r '.usage.completion_tokens // 0' 2>/dev/null)
                 total_t=$(echo "${resp}" | jq -r '.usage.total_tokens // 0' 2>/dev/null)
 
-                # 一行 = "latency_ms prompt_tokens completion_tokens total_tokens"
+                # One line = "latency_ms prompt_tokens completion_tokens total_tokens"
                 echo "${req_lat} ${prompt_t} ${comp_t} ${total_t}" >> "${results_file}"
             ) &
             pids+=($!)
@@ -84,7 +85,7 @@ run_scenario() {
     end_ns=$(date +%s%N)
     wall_ms=$(( (end_ns - start_ns) / 1000000 ))
 
-    # 用 awk 算汇总
+    # Compute summary with awk
     local stats
     stats=$(awk -v wall_ms="${wall_ms}" -v conc="${CONCURRENCY}" '
     {
@@ -119,10 +120,10 @@ run_scenario() {
     echo "${stats}"
 }
 
-# 三种代表性场景
+# Three representative scenarios
 SHORT_PROMPT="hi"
-MED_PROMPT="解释一下什么是 transformer 架构,以及它为什么对自然语言处理重要"
-LONG_PROMPT="请详细解释以下概念:神经网络反向传播算法的数学推导、梯度消失问题、Adam 优化器,以及它们之间的关系。我希望听到一个完整的故事化的回答。"
+MED_PROMPT="Explain the transformer architecture and why it is important for natural language processing"
+LONG_PROMPT="Please explain in detail the following concepts: the mathematical derivation of backpropagation in neural networks, the vanishing gradient problem, the Adam optimizer, and their relationships. I expect a complete and coherent explanation."
 
 declare -A scenarios
 scenarios[short_short]=$(run_scenario "short_short" "${SHORT_PROMPT}" 50)
@@ -130,7 +131,8 @@ scenarios[short_long]=$(run_scenario "short_long"  "${SHORT_PROMPT}" 300)
 scenarios[long_short]=$(run_scenario "long_short"  "${LONG_PROMPT}"  50)
 scenarios[long_long]=$(run_scenario "long_long"  "${LONG_PROMPT}"  300)
 
-# 汇总 — 用 jq -n 构造 JSON,避免 echo 拼接遇到 stats 含 newline 时坏掉
+# Summary — use jq -n to construct JSON, avoiding echo string concatenation
+# that could break if stats contains newlines
 jq -n \
     --argjson conc "${CONCURRENCY}" \
     --argjson reqs "${N_PER_SCENARIO}" \

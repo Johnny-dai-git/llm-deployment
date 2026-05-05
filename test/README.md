@@ -1,118 +1,118 @@
-# LLM 部署测试套件
+# LLM Deployment Test Suite
 
-针对你笔记本上单节点 k8s + vLLM (Qwen2.5-0.5B) 集群的端到端验收测试。
+End-to-end acceptance tests for your laptop single-node k8s + vLLM (Qwen2.5-0.5B) cluster.
 
-## 跑一次
+## Run Once
 
 ```bash
 cd test
 ./run_all.sh
 ```
 
-默认大约 **8-12 分钟**跑完所有测试。结果落到 `test/results/<timestamp>/`。
+Completes all tests in approximately **8-12 minutes**. Results saved to `test/results/<timestamp>/`.
 
-## 包含什么
+## What's Included
 
-| # | 文件 | 测什么 | 关键指标 |
+| # | File | Test Purpose | Key Metrics |
 |---|---|---|---|
-| 01 | `01_smoke.sh` | 功能正确性 | 7 个 case (models/single/streaming/multi-turn/max_tokens/error handling) |
-| 02 | `02_latency.sh` | 延迟基线 (固定 prompt) | 并发 1/4/8 下的 P50/P90/P95/P99 |
-| 03 | `03_throughput.sh` | 吞吐量 (固定 prompt) | 4 种 (短/长 prompt × 短/长 output) 组合的 output tok/s |
-| 04 | `04_hpa.sh` | HPA 扩容 | 高负载下能否触发副本扩容,扩到几个 |
-| 05 | `05_stability.sh` | 持续负载 | 5 分钟 (默认) 的错误率、pod 重启情况 |
-| **06** | **`06_realistic_load.sh`** | **真实负载 (随机 prompt)** | **从 prompt pool 抽,绕过 prefix cache,反映生产真实延迟/吞吐** |
+| 01 | `01_smoke.sh` | Functional correctness | 7 cases (models/single/streaming/multi-turn/max_tokens/error handling) |
+| 02 | `02_latency.sh` | Latency baseline (fixed prompt) | P50/P90/P95/P99 at concurrency 1/4/8 |
+| 03 | `03_throughput.sh` | Throughput (fixed prompt) | Output tok/s for 4 (short/long prompt × short/long output) combinations |
+| 04 | `04_hpa.sh` | HPA scaling | Whether high load triggers replica scaling, how many replicas |
+| 05 | `05_stability.sh` | Sustained load | Error rate and pod restarts for 5 minutes (default) |
+| **06** | **`06_realistic_load.sh`** | **Realistic load (random prompts)** | **Sample from prompt pool, bypass prefix cache, reflect real production latency/throughput** |
 
-> **02/03 vs 06 的区别**:
-> - 02/03 **固定 prompt** 反复打 → vLLM prefix cache 100% 命中,prompt 处理时间近 0,数据偏乐观
-> - 06 **每次随机抽 prompt** → cache 命中率 ~0%,数据贴近生产
-> - 02/03 用来看"理论上限",06 用来看"用户实际体验"
+> **Difference between 02/03 vs 06**:
+> - 02/03 use **same prompt repeatedly** → vLLM prefix cache 100% hit, prompt processing ~0, data optimistic
+> - 06 **randomly sample prompts each time** → cache hit rate ~0%, data close to production
+> - Use 02/03 to see "theoretical limit", use 06 to see "actual user experience"
 
-## 只跑部分
+## Run Subset Only
 
 ```bash
-./run_all.sh smoke latency           # 只跑 01 和 02
-./run_all.sh hpa                     # 只跑 04
+./run_all.sh smoke latency           # Run only 01 and 02
+./run_all.sh hpa                     # Run only 04
 ```
 
-## 调整参数
+## Adjust Parameters
 
 ```bash
-# 指向别的端点(比如 port-forward 调试)
+# Point to different endpoint (e.g., port-forward debugging)
 TEST_ENDPOINT=http://localhost:8080/api/v1/chat/completions ./run_all.sh
 
-# 跑长一点的稳定性测试(30 分钟)
+# Run longer stability test (30 minutes)
 STABILITY_DURATION=1800 ./run_all.sh stability
 
-# HPA 测试加大负载持续时间
+# HPA test with longer load duration
 HPA_LOAD_DURATION=300 HPA_LOAD_CONCURRENCY=12 ./run_all.sh hpa
 
-# 真实负载测试参数
+# Realistic load test parameters
 REALISTIC_DURATION=600 REALISTIC_CONCURRENCY=12 ./run_all.sh realistic
 ```
 
-完整环境变量见各 sub-script 顶部注释。
+Full environment variables documented in each sub-script's header comments.
 
-## 结果在哪
+## Results Location
 
 ```
 test/results/<timestamp>/
-├── SUMMARY.md                    # 跑完之后看这个就够
-├── 00_initial_cluster.txt        # 跑前的 k8s 集群快照
-├── 01_smoke.json                 # 功能测试结果
-├── 01_smoke.log                  # 每个 case 的请求/响应原文
-├── 02_latency.json               # 延迟分位数
-├── 02_latency_c{1,4,8}.raw       # 原始 latency 数据 (每行一个 ms)
+├── SUMMARY.md                    # Read this after completion
+├── 00_initial_cluster.txt        # k8s cluster snapshot before test
+├── 01_smoke.json                 # Functional test results
+├── 01_smoke.log                  # Raw request/response for each case
+├── 02_latency.json               # Latency percentiles
+├── 02_latency_c{1,4,8}.raw       # Raw latency data (one ms per line)
 ├── 02_latency_c{1,4,8}.stats.json
-├── 03_throughput.json            # 吞吐量结果
-├── 03_<scenario>.raw             # 原始 (latency, prompt_tokens, completion_tokens)
-├── 04_hpa.json                   # HPA 触发情况汇总
-├── 04_hpa_timeline.txt           # 每 5 秒一行的 pod count + HPA 决策(可用 column -t -s, 看)
-├── 05_stability.json             # 错误率、RPS、重启次数
-├── 05_stability_snapshots.txt    # 每 30 秒一次的集群快照
-└── 99_final_cluster.txt          # 跑后的 k8s 集群快照
+├── 03_throughput.json            # Throughput results
+├── 03_<scenario>.raw             # Raw (latency, prompt_tokens, completion_tokens)
+├── 04_hpa.json                   # HPA trigger summary
+├── 04_hpa_timeline.txt           # Pod count + HPA decision every 5 seconds (view with: column -t -s,)
+├── 05_stability.json             # Error rate, RPS, restart count
+├── 05_stability_snapshots.txt    # Cluster snapshot every 30 seconds
+└── 99_final_cluster.txt          # k8s cluster snapshot after test
 ```
 
-跑完先看 `SUMMARY.md`,有问题再看具体的 `.json` / `.log`。
+Check `SUMMARY.md` first after completion, then examine specific `.json` / `.log` files if issues.
 
-## 期望的指标范围 (笔记本 RTX 4050 Laptop + Qwen2.5-0.5B)
+## Expected Metrics (Laptop RTX 4050 + Qwen2.5-0.5B)
 
-仅供对照,实际值跟你笔记本散热、time-slicing 配置都有关。
+For reference only; actual values depend on your laptop's thermals and time-slicing configuration.
 
-| 指标 | 期望 |
+| Metric | Expected |
 |---|---|
-| smoke 7 个 case | 7/7 pass |
-| 单流 P50 延迟(80 token) | 1500-3000ms |
-| 并发 8 P95 延迟 | 5000-10000ms |
-| output throughput (单流) | 30-50 tok/s |
-| output throughput (并发 8) | 80-150 tok/s (continuous batching 增益) |
-| HPA peak replicas | 2 (time-slicing 上限) |
-| 5 分钟稳定性错误率 | < 0.5% |
-| vllm-worker RESTARTS Δ | 0 |
+| Smoke 7 cases | 7/7 pass |
+| Single-stream P50 latency (80 token) | 1500-3000ms |
+| Concurrency 8 P95 latency | 5000-10000ms |
+| Output throughput (single-stream) | 30-50 tok/s |
+| Output throughput (concurrency 8) | 80-150 tok/s (continuous batching benefit) |
+| HPA peak replicas | 2 (time-slicing limit) |
+| 5-minute stability error rate | < 0.5% |
+| vllm-worker RESTARTS delta | 0 |
 
-## 依赖
+## Dependencies
 
 - `bash` (4.x+)
 - `curl`
 - `jq`
 - `awk`
 - `bc`
-- `kubectl` (有权限读 namespace `llm` 和 `monitoring`)
+- `kubectl` (read permissions for namespace `llm` and `monitoring`)
 
-无需 oha/wrk/ab/k6 等额外工具,纯 shell 实现。
+No additional tools required (oha/wrk/ab/k6 etc.), pure shell implementation.
 
-## 触发问题怎么办
+## Troubleshooting
 
-| 症状 | 排查 |
+| Symptom | Diagnosis |
 |---|---|
-| 大量 5xx | 看 `kubectl logs -n llm -l app=vllm-worker --tail=100`,可能 vllm 崩了 |
-| smoke 全 fail | 端点不对 / pods 不 ready,先 `kubectl get pods -A` |
-| 延迟特别长 | 看 Grafana DCGM dashboard,GPU 是否被别的 pod 抢占 |
-| HPA 没扩容 | `kubectl describe hpa -n llm vllm-worker` 看 events,通常是 metrics-server / prometheus-adapter 没就绪 |
-| 稳定性 RESTARTS > 0 | `kubectl describe pod -n llm <pod>` 看 events,可能是 OOM / liveness probe 失败 |
+| Many 5xx errors | Check `kubectl logs -n llm -l app=vllm-worker --tail=100`, vllm may have crashed |
+| Smoke all fail | Wrong endpoint / pods not ready, run `kubectl get pods -A` |
+| Very high latency | Check Grafana DCGM dashboard, is GPU contended by other pods? |
+| HPA not scaling | `kubectl describe hpa -n llm vllm-worker` check events, usually metrics-server / prometheus-adapter not ready |
+| Stability RESTARTS > 0 | `kubectl describe pod -n llm <pod>` check events, possible OOM / liveness probe failure |
 
-## 设计原则
+## Design Principles
 
-- **零外部依赖**:除了你笔记本上跑 k8s 必备的那几个,没有再装额外工具
-- **结果自包含**:每次跑都开一个新 timestamp 目录,方便前后对比 / 多次取样
-- **失败不中断**:任何一个测试 fail,后面继续跑
-- **幂等**:reset 集群之后再跑结果应该可比
+- **Zero external dependencies**: Only what's essential for running k8s on your laptop
+- **Self-contained results**: New timestamp directory each run for easy comparison / multi-sampling
+- **Fail-safe**: One test failure does not interrupt subsequent tests
+- **Idempotent**: Results should be comparable after cluster reset

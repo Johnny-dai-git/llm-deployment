@@ -7,7 +7,7 @@ metadata:
     app: llm-api
   annotations:
     # ArgoCD Image Updater configuration
-    # 注意：image-list 中的别名是 llm-api，但实际使用的镜像名称是 gateway
+    # Note: alias in image-list is llm-api, but actual image name used is gateway
     argocd-image-updater.argoproj.io/image-list: llm-api=ghcr.io/johnny-dai-git/llm-deployment/gateway
     argocd-image-updater.argoproj.io/llm-api.update-strategy: name
     argocd-image-updater.argoproj.io/llm-api.allow-tags: regexp:^v-[0-9]{8}-[0-9]{6}$
@@ -27,8 +27,8 @@ spec:
     metadata:
       labels:
         app: llm-api
-      # Prometheus 抓取由 api-servicemonitor.yaml(ServiceMonitor)负责,
-      # 不再使用 prometheus.io/* annotation(kube-prometheus-stack 不读这个)
+      # Prometheus scraping is handled by api-servicemonitor.yaml (ServiceMonitor);
+      # we no longer use prometheus.io/* annotations (kube-prometheus-stack ignores them)
     spec:
       terminationGracePeriodSeconds: 60
       securityContext:
@@ -73,7 +73,7 @@ spec:
               memory: "1536Mi"
 
           # Common environment variables (optional)
-          # llm-api 直接转发到 vllm-worker(原 router 已合并到 llm-api)
+          # llm-api forwards directly to vllm-worker (original router merged into llm-api)
           env:
             - name: VLLM_WORKER_HOST
               value: "vllm-worker-service.llm.svc.cluster.local"
@@ -87,8 +87,8 @@ spec:
               value: "20"
 
           # ========= Probes =========
-          # FastAPI 启动很快(<2s),但加 startupProbe 给一致性 +
-          # 容忍 Python 依赖偶尔卡顿
+          # FastAPI starts very fast (<2s), but add startupProbe for consistency +
+          # tolerance Python dependencies occasional stalls
           startupProbe:
             httpGet:
               path: /health
@@ -96,7 +96,7 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 3
             timeoutSeconds: 3
-            failureThreshold: 10        # ~30s 启动预算
+            failureThreshold: 10        # ~30s startup budget
 
           readinessProbe:
             httpGet:

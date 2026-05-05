@@ -1,34 +1,34 @@
 #!/bin/bash
 # ================================================================
-# test/lib/common.sh — 共享 helper,被各个 NN_xxx.sh 引用
+# test/lib/common.sh — Shared helpers used by each NN_xxx.sh script
 # ================================================================
-# 设计原则:
-# - 零外部依赖:只用 curl/jq/awk/bash 内建,不依赖 oha/wrk/ab/k6 等
-# - 结果都落到 ${RESULTS_DIR},一份原始数据 .log + 一份指标 .json
-# - 任何单个 case 失败不应中断,继续往后跑
+# Design principles:
+# - Zero external dependencies: only curl/jq/awk/bash built-ins, no oha/wrk/ab/k6 etc.
+# - Results all go to ${RESULTS_DIR}, raw data .log + metrics .json
+# - Individual case failure should not interrupt, continue running
 # ================================================================
 
-# 默认配置(可被环境变量覆盖)
+# Default configuration (can be overridden by environment variables)
 # ----------------------------------------------------------------
-# 如果没显式设 TEST_ENDPOINT,自动判断:
-#   1. 在 Lambda 上 (能 curl 出 public IP)        → 用 public IP
-#   2. localhost 能连上 ingress                    → 用 localhost
-#   3. 都不行                                      → 报错
+# If TEST_ENDPOINT not explicitly set, auto-detect:
+#   1. On Lambda (can curl public IP)        → use public IP
+#   2. localhost can connect to ingress      → use localhost
+#   3. Neither works                         → error
 # ----------------------------------------------------------------
 _detect_endpoint() {
-    # 1. user 显式给了就用
+    # 1. If user explicitly provided, use it
     if [ -n "${TEST_ENDPOINT:-}" ]; then
         echo "${TEST_ENDPOINT}"
         return
     fi
 
-    # 2. 试 localhost (笔记本/同机)
+    # 2. Try localhost (laptop/same machine)
     if curl -fsS --max-time 2 http://localhost/api/v1/models >/dev/null 2>&1; then
         echo "http://localhost/api/v1/chat/completions"
         return
     fi
 
-    # 3. Lambda 模式:从 ifconfig.me 拿 public IP
+    # 3. Lambda mode: get public IP from ifconfig.me
     local pub
     pub=$(curl -fsS --max-time 5 ifconfig.me 2>/dev/null || true)
     if [ -n "$pub" ] && curl -fsS --max-time 5 "http://${pub}/api/v1/models" >/dev/null 2>&1; then
@@ -36,53 +36,54 @@ _detect_endpoint() {
         return
     fi
 
-    # 4. 兜底:打回 localhost,让 check_endpoint 报具体错
+    # 4. Fallback: return localhost, let check_endpoint report specific error
     echo "http://localhost/api/v1/chat/completions"
 }
 
 TEST_ENDPOINT="$(_detect_endpoint)"
 TEST_MODEL="${TEST_MODEL:-qwen2.5-0.5b}"
 
-# 颜色
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# 所有 log 都走 stderr,这样函数用 echo 在 stdout 返回数据时
-# 不会被 $() 捕获污染(unix 惯例)。否则 02/03 里 run_xxx | $() 的
-# 模式会把 log_info 的输出混进 stats JSON 导致 jq 解析失败。
+# All log output goes to stderr so functions returning data via echo on stdout
+# don't get polluted when captured by $() (unix convention). Otherwise the
+# `run_xxx | $()` pattern in 02/03 would mix log_info output into stats JSON
+# and break jq parsing.
 log_info()  { echo -e "${GREEN}[$(date +%H:%M:%S) INFO]${NC} $*" >&2; }
 log_warn()  { echo -e "${YELLOW}[$(date +%H:%M:%S) WARN]${NC} $*" >&2; }
 log_error() { echo -e "${RED}[$(date +%H:%M:%S) ERR ]${NC} $*" >&2; }
 log_step()  { echo -e "${BLUE}━━━ $* ━━━${NC}" >&2; }
 
-# 检查依赖,没装就 fail-fast
+# Check dependencies, fail-fast if missing
 check_deps() {
     local missing=()
     for cmd in curl jq awk bc kubectl; do
         command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
     done
     if [ ${#missing[@]} -gt 0 ]; then
-        log_error "缺少依赖: ${missing[*]}"
-        log_error "Ubuntu 装法: sudo apt install -y ${missing[*]}"
+        log_error "Missing dependencies: ${missing[*]}"
+        log_error "Ubuntu install: sudo apt install -y ${missing[*]}"
         exit 2
     fi
 }
 
-# 测一次端点是否活着
+# Test if endpoint is reachable
 check_endpoint() {
     if ! curl -fsS --max-time 5 "${TEST_ENDPOINT%/v1/chat/completions}/v1/models" >/dev/null 2>&1; then
-        log_error "端点 ${TEST_ENDPOINT} 不可达"
-        log_error "确认: kubectl get pods -n llm 全部 1/1 Running"
+        log_error "Endpoint ${TEST_ENDPOINT} unreachable"
+        log_error "Verify: kubectl get pods -n llm all 1/1 Running"
         exit 3
     fi
 }
 
-# 发一个 chat completions 请求,返回 latency_ms 和 HTTP code
+# Send one chat completion request, return latency_ms and HTTP code
 # Usage: do_request "<prompt>" <max_tokens> [stream]
-# 输出: "<latency_ms> <http_code> <bytes>"
+# Output: "<latency_ms> <http_code> <bytes>"
 do_request() {
     local prompt="$1"
     local max_tokens="${2:-100}"
@@ -111,7 +112,7 @@ do_request() {
     echo "${latency_ms} ${http_code:-000} ${body_size:-0}"
 }
 
-# 给一组 latency_ms 数字算 percentiles,输出 JSON
+# Compute percentiles for a group of latency_ms numbers, output JSON
 # Usage: cat latencies.txt | compute_stats
 compute_stats() {
     awk '
@@ -136,7 +137,7 @@ compute_stats() {
     '
 }
 
-# 集群快照:pods + HPA + node 资源
+# Cluster snapshot: pods + HPA + node resources
 snapshot_cluster() {
     local outfile="$1"
     {
@@ -153,7 +154,7 @@ snapshot_cluster() {
     } >> "${outfile}"
 }
 
-# 初始化 results 目录(只在 entry script 调用一次,export 给所有 sub-script)
+# Initialize results directory (call once in entry script, export to all sub-scripts)
 init_results_dir() {
     if [ -z "${RESULTS_DIR:-}" ]; then
         RESULTS_DIR="${SCRIPT_DIR}/results/$(date +%Y%m%d-%H%M%S)"

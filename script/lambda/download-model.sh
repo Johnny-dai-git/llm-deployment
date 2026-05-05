@@ -1,18 +1,18 @@
 #!/bin/bash
 # =============================================================================
-# Lambda A100 — 下载 Qwen2.5-0.5B-Instruct 到 vllm-worker 的 hostPath 挂载点
+# Lambda A100 — download Qwen2.5-0.5B-Instruct to vllm-worker's hostPath mount
 #
-# 与 laptop 版本的差异:
-#   - MODELS_ROOT: /mnt/models (而不是 /home/johnny/.../models)
-#     —— 与 GCP_BRANCH manifests 里 hostPath: /mnt/models 对齐
-#   - HF endpoint: 默认官方 huggingface.co (Lambda 在美国,不需要镜像)
+# Differences from laptop version:
+#   - MODELS_ROOT: /mnt/models (not /home/johnny/.../models)
+#     — aligns with hostPath: /mnt/models in GCP_BRANCH manifests
+#   - HF endpoint: default official huggingface.co (Lambda in US, no mirror needed)
 #
-# 幂等:已下载好就 skip。
+# Idempotent: if already downloaded, skip.
 # =============================================================================
 
 set -e
 
-# ============ 配置 ============
+# ============ Configuration ============
 MODEL_NAME="${MODEL_NAME:-Qwen/Qwen2.5-0.5B-Instruct}"
 MODEL_LOCAL_NAME="${MODEL_LOCAL_NAME:-qwen2.5-0.5b}"
 MODELS_ROOT="${MODELS_ROOT:-/mnt/models}"
@@ -36,10 +36,10 @@ log_info "HF endpoint:  ${HF_ENDPOINT_URL}"
 log_info "================================================"
 echo ""
 
-# 创建目录(如果是 root 跑)
+# Create directory (if running as root)
 sudo mkdir -p "${TARGET_DIR}"
 sudo chmod 755 "${MODELS_ROOT}"
-# 让当前用户能写
+# Allow current user to write
 if [ -n "${SUDO_USER:-}" ]; then
     sudo chown -R "${SUDO_USER}:${SUDO_USER}" "${TARGET_DIR}"
 fi
@@ -50,7 +50,7 @@ REQUIRED_FILES=(
     "tokenizer_config.json"
 )
 
-# 幂等检查
+# Idempotent check
 ALL_PRESENT=1
 for f in "${REQUIRED_FILES[@]}"; do
     if [ ! -f "${TARGET_DIR}/${f}" ]; then
@@ -66,18 +66,18 @@ if ls "${TARGET_DIR}"/*.safetensors >/dev/null 2>&1 || \
 fi
 
 if [ "${ALL_PRESENT}" -eq 1 ] && [ "${WEIGHTS_PRESENT}" -eq 1 ]; then
-    log_info "✅ 模型已存在,跳过下载"
-    log_info "如要重下,先删除: ${TARGET_DIR}"
+    log_info "✅ Model already exists, skip download"
+    log_info "To re-download, first delete: ${TARGET_DIR}"
     echo ""
-    log_info "已有文件清单:"
+    log_info "Existing files:"
     ls -lh "${TARGET_DIR}" | tail -n +2
     exit 0
 fi
 
-# 装 huggingface_hub
+# Install huggingface_hub
 log_info "Checking huggingface_hub..."
 if ! python3 -c "import huggingface_hub" 2>/dev/null; then
-    log_warn "huggingface_hub 未安装,正在安装..."
+    log_warn "huggingface_hub not installed, installing..."
     pip install --quiet -U "huggingface_hub" || pip install --quiet --break-system-packages -U "huggingface_hub"
 fi
 
@@ -87,16 +87,16 @@ if command -v hf >/dev/null 2>&1; then
 elif command -v huggingface-cli >/dev/null 2>&1; then
     HF_CLI="huggingface-cli"
 else
-    log_error "找不到 hf / huggingface-cli"
-    log_error "尝试: pip install -U huggingface_hub"
+    log_error "cannot find hf / huggingface-cli"
+    log_error "try: pip install -U huggingface_hub"
     exit 1
 fi
 
 log_info "huggingface_hub OK (using: ${HF_CLI})"
 echo ""
 
-log_info "开始下载..."
-log_info "0.5B 模型大小约 1 GB,Lambda 内网带宽很快,十几秒搞定"
+log_info "Starting download..."
+log_info "0.5B model is ~1 GB; Lambda internal bandwidth is fast, should take ~10 seconds"
 echo ""
 
 if [ "${HF_CLI}" = "hf" ]; then
@@ -104,8 +104,8 @@ if [ "${HF_CLI}" = "hf" ]; then
         "${MODEL_NAME}" \
         --local-dir "${TARGET_DIR}" \
         || {
-            log_error "下载失败"
-            log_error "可能原因: 网络问题 / hf token 缺失 / 磁盘空间不足"
+            log_error "Download failed"
+            log_error "Possible causes: network issue / missing hf token / insufficient disk space"
             exit 1
         }
 else
@@ -114,13 +114,13 @@ else
         --local-dir "${TARGET_DIR}" \
         --local-dir-use-symlinks False \
         || {
-            log_error "下载失败"
+            log_error "Download failed"
             exit 1
         }
 fi
 
 echo ""
-log_info "下载完成,验证文件..."
+log_info "Download complete, verifying files..."
 
 MISSING=()
 for f in "${REQUIRED_FILES[@]}"; do
@@ -130,13 +130,13 @@ for f in "${REQUIRED_FILES[@]}"; do
 done
 
 if [ ${#MISSING[@]} -gt 0 ]; then
-    log_error "下载完成但缺少必需文件: ${MISSING[*]}"
+    log_error "Download complete but missing required files: ${MISSING[*]}"
     exit 1
 fi
 
 if ! ls "${TARGET_DIR}"/*.safetensors >/dev/null 2>&1 && \
    ! ls "${TARGET_DIR}"/pytorch_model.bin >/dev/null 2>&1; then
-    log_error "下载完成但没有模型权重文件"
+    log_error "Download complete but no model weights file"
     exit 1
 fi
 
@@ -144,11 +144,11 @@ TOTAL_SIZE=$(du -sh "${TARGET_DIR}" | awk '{print $1}')
 
 echo ""
 log_info "================================================"
-log_info "✅ 模型下载完成"
+log_info "✅ Model download complete"
 log_info "================================================"
-log_info "位置:    ${TARGET_DIR}"
-log_info "大小:    ${TOTAL_SIZE}"
-log_info "文件数:  $(find "${TARGET_DIR}" -type f | wc -l)"
+log_info "Location:    ${TARGET_DIR}"
+log_info "Size:        ${TOTAL_SIZE}"
+log_info "File count:  $(find "${TARGET_DIR}" -type f | wc -l)"
 echo ""
-log_info "vllm-worker 会从这里挂载到 Pod 内 /model/${MODEL_LOCAL_NAME}"
-log_info "下一步: sudo bash script/lambda/launch.sh"
+log_info "vllm-worker will mount this to /model/${MODEL_LOCAL_NAME} inside Pod"
+log_info "Next step: sudo bash script/lambda/launch.sh"

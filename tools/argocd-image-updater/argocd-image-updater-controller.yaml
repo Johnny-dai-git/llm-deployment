@@ -50,9 +50,9 @@ spec:
         image: quay.io/argoprojlabs/argocd-image-updater:v0.15.2
         imagePullPolicy: IfNotPresent
 
-        # ✅ 关键修复点：
-        # argocd-image-updater 是 CLI 工具，必须带子命令 "run" 才能启动主循环
-        # 使用镜像自带 ENTRYPOINT，但需要 args: ["run"] 来启动主循环
+        # ✅ Key fix point:
+        # argocd-image-updater is a CLI tool, must have "run" subcommand to start main loop
+        # Use image's built-in ENTRYPOINT, but needs args: ["run"] to start main loop
         args:
           - run
 
