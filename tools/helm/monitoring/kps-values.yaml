@@ -69,21 +69,31 @@ grafana:
       nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
       nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
 
+  # ⚠️ grafana.ini 注意点:INI section 名带点 (如 [auth.anonymous],
+  # [auth.basic]) 必须用字面字符串 key,不能用嵌套 YAML map。
+  # 嵌套 map 会被 helm 渲染成 JSON 塞进父 section,Grafana 看不懂。
   grafana.ini:
     server:
       root_url: "%(protocol)s://%(domain)s/grafana/"
       serve_from_sub_path: true
+
+    # [auth] 主 section
     auth:
-      # Anonymous Admin:任何人不登录直接进就是 Admin 权限
-      anonymous:
-        enabled: true
-        org_role: Admin
-      # 隐藏登录表单 + 退出菜单 → 彻底无登录页
-      # 注意:此项严格禁止用于公网!仅适合本地/内网 demo
+      # 隐藏登录表单 + 退出菜单 → 配合 anonymous Admin 实现"零登录"体验
+      # ⚠️ 此项严格禁止用于公网!仅适合本地/内网 demo
       disable_login_form: true
       disable_signout_menu: true
-      basic:
-        enabled: false
+
+    # [auth.anonymous] —— 字面字符串 key,不是嵌套
+    # 任何人不登录直接进就是 Admin 权限
+    "auth.anonymous":
+      enabled: true
+      org_name: "Main Org."
+      org_role: Admin
+
+    # [auth.basic] —— 关掉 basic auth(我们不用)
+    "auth.basic":
+      enabled: false
 
   persistence:
     enabled: true
