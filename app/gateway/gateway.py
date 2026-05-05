@@ -207,13 +207,33 @@ async def chat_completions(
         raise HTTPException(status_code=504, detail="Worker timeout")
 
     except httpx.HTTPStatusError as e:
-        body = e.response.text[:200] if hasattr(e.response, "text") else ""
+        # vLLM 返回非 2xx 时:
+        #   - 4xx 是 client 端问题(unknown model / invalid messages / 等),
+        #     按 OpenAI 兼容标准应该原样透传给客户端,带上 vllm 的 error body,
+        #     这样前端能区分"是我输入错了"还是"服务挂了"
+        #   - 5xx 是 vllm 内部错误,我们包装成 502 不暴露上游细节
+        upstream_code = e.response.status_code
+        body_text = e.response.text[:500] if hasattr(e.response, "text") else ""
         logger.error(
-            f"[{request_id}] worker HTTP {e.response.status_code}: {body}"
+            f"[{request_id}] worker HTTP {upstream_code}: {body_text}"
         )
+        if 400 <= upstream_code < 500:
+            # 把 vllm 的 error JSON 透传出去
+            try:
+                err_detail = e.response.json()
+            except Exception:
+                err_detail = {
+                    "error": {
+                        "message": body_text or "upstream error",
+                        "type": "upstream_error",
+                        "code": upstream_code,
+                    }
+                }
+            raise HTTPException(status_code=upstream_code, detail=err_detail)
+        # 5xx → 502
         raise HTTPException(
             status_code=502,
-            detail=f"Worker HTTP error {e.response.status_code}",
+            detail=f"Worker HTTP error {upstream_code}",
         )
 
     except Exception as e:
