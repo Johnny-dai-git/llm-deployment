@@ -316,6 +316,80 @@ watch -n 2 'kubectl get hpa -n llm; echo; kubectl get pods -n llm'
 # After 5+ minutes idle, scaleDown kicks in and replicas drop back to 1
 ```
 
+## Performance Baseline
+
+End-to-end benchmark on the laptop reference setup: **single-node K8s, NVIDIA RTX 4050 Laptop (6 GB VRAM, ~192 GB/s mem bandwidth), Qwen2.5-0.5B fp16, vLLM 0.11**. Full raw results live in [`test/results/baseline-pre-optimization/`](test/results/baseline-pre-optimization). Reproduce with:
+
+```bash
+cd test
+./run_all.sh                 # ~17 min, all 6 stages, generates SUMMARY.md
+```
+
+### 01 — Functional (7 / 7 passed)
+
+`/v1/models` · single completion · SSE streaming · multi-turn · `max_tokens` enforcement · unknown-model 4xx · empty-messages 4xx — all green.
+
+### 02 — Latency (固定 prompt, prefix-cache hit; 30 req per level)
+
+| Concurrency | Mean | P50 | P90 | P95 | P99 |
+|---|---|---|---|---|---|
+| 1 | 649 ms | 672 ms | 722 ms | 725 ms | 737 ms |
+| 4 | 737 ms | 751 ms | 774 ms | 789 ms | 800 ms |
+| 8 | 809 ms | 825 ms | 883 ms | 883 ms | 884 ms |
+
+Concurrency 8 P50 only **23% higher** than single-stream — vLLM continuous batching works as advertised.
+
+### 03 — Throughput (固定 prompt, prefix-cache hit; 16 req per scenario, concurrency 8)
+
+| Scenario | Output tok/s | Wall | Avg latency |
+|---|---|---|---|
+| Short prompt + short output | 366.0 | 1.19 s | 420 ms |
+| Short prompt + long output  | 437.2 | 1.16 s | 432 ms |
+| Long prompt + short output  | 644.1 | 1.24 s | 606 ms |
+| **Long prompt + long output** | **824.2** | 5.82 s | 2.9 s |
+
+Peak **~824 tok/s** under 8-way batched load — about **70-80% of the theoretical memory-bandwidth-bound ceiling** for fp16 Qwen2.5-0.5B on this GPU.
+
+### 04 — HPA Autoscaling (240 s sustained load, concurrency 20)
+
+- HPA range: `[1, 2]` (capped by GPU time-slicing slots)
+- Replicas: initial 1 → **peak 2** ✅
+- Trigger: `vllm:num_requests_waiting` averaged > 5 over a 60 s stabilization window
+- Path: vLLM `/metrics` → Prometheus → prometheus-adapter → HPA v2
+
+### 05 — Sustained Load Stability (300 s, concurrency 4)
+
+| Metric | Value |
+|---|---|
+| Total requests | 842 |
+| Errors | **0** (0.00%) |
+| RPS | 2.81 |
+| `vllm-worker` pod restarts | **0** |
+
+### 06 — Realistic Load (300 s, concurrency 8, **60 random prompts** to defeat prefix cache)
+
+| Metric | Value |
+|---|---|
+| Total OK requests | 680 |
+| Errors | 3 (0.44%) |
+| **Output tok/s (sustained)** | **433.8** |
+| Total tok/s (incl. prompt) | 554.3 |
+| RPS | 2.27 |
+| **P50 latency** | **2 484 ms** |
+| P95 latency | 5 881 ms |
+| P99 latency | 6 379 ms |
+
+### 02/03 vs 06 — Why the Two Numbers Both Matter
+
+| | 02 / 03 (fixed prompt, cache 100% hit) | 06 (random prompts, cache miss) | Ratio |
+|---|---|---|---|
+| Single-stream P50 latency | 672 ms | 2 484 ms | **3.7× slower without cache** |
+| Output throughput | ~824 tok/s **peak** | ~434 tok/s **sustained** | **0.53× under real traffic** |
+
+Stages 02 and 03 reuse the same prompt for every request, so vLLM's automatic prefix caching hits ~100% and prompt-processing time collapses to near zero — these numbers represent the **theoretical ceiling**. Stage 06 samples randomly from a 60-prompt pool covering Chinese & English, programming, math, and creative writing, so cache hit rate ≈ 0% — these numbers represent **real production throughput and latency**.
+
+**Capacity planning should use the 06 numbers (~434 tok/s sustained, P95 5.9 s), not the 824 tok/s peak.**
+
 ## Lambda Migration Notes
 
 This setup runs on a single-node laptop. To move to Lambda Labs (or any multi-node cluster):
