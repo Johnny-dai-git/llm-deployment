@@ -28,7 +28,7 @@ init_results_dir
 
 # 选择性跑子集
 SELECTED=("$@")
-ALL=(smoke latency throughput hpa stability)
+ALL=(smoke latency throughput hpa stability realistic)
 [ ${#SELECTED[@]} -eq 0 ] && SELECTED=("${ALL[@]}")
 
 START_TS=$(date +%s)
@@ -67,6 +67,7 @@ run_one() {
 [[ " ${SELECTED[*]} " =~ " throughput " ]] && run_one throughput 03_throughput.sh
 [[ " ${SELECTED[*]} " =~ " hpa "        ]] && run_one hpa        04_hpa.sh
 [[ " ${SELECTED[*]} " =~ " stability "  ]] && run_one stability  05_stability.sh
+[[ " ${SELECTED[*]} " =~ " realistic "  ]] && run_one realistic  06_realistic_load.sh
 
 # 终态集群快照
 snapshot_cluster "${RESULTS_DIR}/99_final_cluster.txt"
@@ -95,7 +96,7 @@ jq_or_na() {
     echo
     echo "## Status"
     echo
-    for key in smoke latency throughput hpa stability; do
+    for key in smoke latency throughput hpa stability realistic; do
         s="${TEST_STATUS[$key]:-skipped}"
         case "${s}" in
             ok)      icon="✅" ;;
@@ -205,6 +206,51 @@ jq_or_na() {
         else
             echo "- ❌ stability **FAILED**(errors > 1% 或 pods restarted)"
         fi
+        echo
+    fi
+
+    # ========== 06 realistic ==========
+    if [ -f "${RESULTS_DIR}/06_realistic.json" ]; then
+        echo "## 06 — Realistic Load (随机 prompt,无 prefix-cache 加速)"
+        echo
+        d=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .duration_sec)
+        conc=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .concurrency)
+        pool=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .prompt_pool_size)
+        ok=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .ok_requests)
+        err=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .err_requests)
+        rate=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .error_rate_percent)
+        rps=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .rps)
+        echo "- duration: ${d}s, concurrency: ${conc}, prompt pool: ${pool}"
+        echo "- OK=${ok}  ERR=${err}  (rate=${rate}%, RPS=${rps})"
+        echo
+        echo "**整体延迟 (ms):**"
+        echo "| count | min | max | mean | P50 | P90 | P95 | P99 |"
+        echo "|---|---|---|---|---|---|---|---|"
+        cnt=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.count)
+        mn=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.min_ms)
+        mx=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.max_ms)
+        me=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.mean_ms)
+        p50=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.p50_ms)
+        p90=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.p90_ms)
+        p95=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.p95_ms)
+        p99=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .latency_ms_overall.p99_ms)
+        echo "| ${cnt} | ${mn} | ${mx} | ${me} | ${p50} | ${p90} | ${p95} | ${p99} |"
+        echo
+        echo "**按 prompt 长度分组的延迟 P50/P95 (ms):**"
+        echo "| bucket | count | P50 | P95 |"
+        echo "|---|---|---|---|"
+        for b in short medium long; do
+            c=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" ".latency_ms_by_prompt_size.${b}.count")
+            p50_b=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" ".latency_ms_by_prompt_size.${b}.p50_ms")
+            p95_b=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" ".latency_ms_by_prompt_size.${b}.p95_ms")
+            echo "| ${b} | ${c} | ${p50_b} | ${p95_b} |"
+        done
+        echo
+        echo "**Token 吞吐 (基于 wall time):**"
+        op=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .token_throughput.output_tok_per_sec)
+        tp=$(jq_or_na "${RESULTS_DIR}/06_realistic.json" .token_throughput.total_tok_per_sec)
+        echo "- output tok/s: **${op}**"
+        echo "- total tok/s (含 prompt): ${tp}"
         echo
     fi
 

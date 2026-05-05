@@ -16,10 +16,16 @@ cd test
 | # | 文件 | 测什么 | 关键指标 |
 |---|---|---|---|
 | 01 | `01_smoke.sh` | 功能正确性 | 7 个 case (models/single/streaming/multi-turn/max_tokens/error handling) |
-| 02 | `02_latency.sh` | 延迟基线 | 并发 1/4/8 下的 P50/P90/P95/P99 |
-| 03 | `03_throughput.sh` | 吞吐量 | 4 种 (短/长 prompt × 短/长 output) 组合的 output tok/s |
+| 02 | `02_latency.sh` | 延迟基线 (固定 prompt) | 并发 1/4/8 下的 P50/P90/P95/P99 |
+| 03 | `03_throughput.sh` | 吞吐量 (固定 prompt) | 4 种 (短/长 prompt × 短/长 output) 组合的 output tok/s |
 | 04 | `04_hpa.sh` | HPA 扩容 | 高负载下能否触发副本扩容,扩到几个 |
 | 05 | `05_stability.sh` | 持续负载 | 5 分钟 (默认) 的错误率、pod 重启情况 |
+| **06** | **`06_realistic_load.sh`** | **真实负载 (随机 prompt)** | **从 prompt pool 抽,绕过 prefix cache,反映生产真实延迟/吞吐** |
+
+> **02/03 vs 06 的区别**:
+> - 02/03 **固定 prompt** 反复打 → vLLM prefix cache 100% 命中,prompt 处理时间近 0,数据偏乐观
+> - 06 **每次随机抽 prompt** → cache 命中率 ~0%,数据贴近生产
+> - 02/03 用来看"理论上限",06 用来看"用户实际体验"
 
 ## 只跑部分
 
@@ -39,6 +45,9 @@ STABILITY_DURATION=1800 ./run_all.sh stability
 
 # HPA 测试加大负载持续时间
 HPA_LOAD_DURATION=300 HPA_LOAD_CONCURRENCY=12 ./run_all.sh hpa
+
+# 真实负载测试参数
+REALISTIC_DURATION=600 REALISTIC_CONCURRENCY=12 ./run_all.sh realistic
 ```
 
 完整环境变量见各 sub-script 顶部注释。

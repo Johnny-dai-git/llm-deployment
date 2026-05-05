@@ -1,0 +1,78 @@
+# 真实负载测试用的 prompt pool。
+# - 一行一个 prompt
+# - # 开头是注释,会被脚本跳过
+# - 空行会被跳过
+# - 混合中英文、长短、问答 / 创作 / 编程 / 数学 / 知识等多种类型
+# - 06_realistic_load.sh 每个请求从这里 shuf -n 1 随机抽
+
+# ===== 短问题 (5-30 字) =====
+今天是几号
+什么是机器学习
+推荐一本科幻小说
+1 加 1 等于多少
+什么是递归
+解释 SQL 和 NoSQL 的区别
+Python 和 Java 哪个更适合 AI
+什么是 docker
+HTTP 状态码 404 是什么
+解释一下闭包
+What is TCP/IP
+Tell me a joke
+What does CRUD mean
+How do I sort a list in Python
+What is unit testing
+冒泡排序的时间复杂度
+什么是 RESTful API
+解释一下事务的 ACID 性质
+HTTPS 和 HTTP 的区别
+什么是依赖注入
+
+# ===== 中等长度 (40-100 字) =====
+请用通俗的语言解释一下什么是 transformer 架构,以及它为什么对自然语言处理这么重要
+比较一下监督学习、无监督学习、强化学习这三种机器学习范式,各举一个实际应用例子
+解释 Python 中 GIL 是什么,它对多线程性能有什么影响,如何绕过它
+列举 5 个常用的 Linux 命令并说明它们的典型用法
+请简述一下区块链的工作原理,包括共识机制、哈希链和 Merkle 树
+写一段 Python 代码,要求实现一个简单的二分查找,带注释说明每一步
+比较 REST API 和 GraphQL 的优缺点,在什么场景下应该选哪个
+解释一下数据库索引是怎么工作的,为什么过多的索引反而会拖慢写入
+什么是 OAuth 2.0,它和 OAuth 1.0 主要区别是什么,授权码模式和隐式模式的差异
+请解释 React 中的虚拟 DOM 是什么,以及为什么它能提高渲染性能
+Explain the difference between processes and threads, with examples of when to use each
+Describe how a hash table works internally and why average lookup is O(1)
+解释一下 CAP 定理,在分布式系统设计中怎么权衡这三者
+写一首关于程序员深夜调 bug 的现代诗
+讲一个关于人工智能觉醒的短故事(200字以内)
+
+# ===== 长上下文 / 复杂任务 (100+ 字) =====
+我正在做一个数据分析任务,有一个 CSV 文件包含用户行为日志,每行有时间戳、用户ID、动作类型和数值。请帮我设计一个 Python 方案,要求:1) 找出最活跃的前 10 个用户;2) 按小时统计动作分布;3) 检测异常行为模式。给出代码框架。
+我们公司在用 Kubernetes 跑 LLM 推理服务,最近碰到 HPA 扩容时新 pod 调度失败的问题,现象是 SuccessfulRescale 之后立刻又被 Scaled down 回去。请帮我列举可能的根因(至少 5 个)并说明每个的诊断方法。
+请帮我设计一个微服务架构,需求是:用户系统、订单系统、支付系统、通知系统。要求说明每个服务的职责边界、它们之间用什么方式通信、数据一致性怎么保证、出现故障时的降级策略。
+我有一个 Python web 应用部署在生产环境,最近响应时间从 100ms 涨到 800ms。请给出系统化的排查思路,从应用层、数据库层、网络层、基础设施层分别说明应该看哪些指标和日志。
+我想从零开始学深度学习,目标是在 6 个月内能独立做一个图像分类项目。请帮我制定一个学习路线图,包括必备的数学基础、框架选择、实战项目阶梯,以及每个阶段的学习资源推荐。
+解释一下 LLM 推理过程中 prefill 和 decode 两个阶段的区别。包括各自的计算特征(compute-bound 还是 memory-bound)、对 GPU 利用率的影响,以及 continuous batching 在这两个阶段中的作用。
+You are a senior backend engineer. Review this REST API design problem: we need an endpoint that returns paginated user data with filtering by status, role, and date range. The dataset has 50M rows. Discuss your approach to query performance, pagination strategy (offset vs cursor), and caching.
+帮我详细设计一个针对 LLM 服务的限流方案,需要支持:1) 按 API key 的 RPS 限制;2) 按 token 数的滑动窗口限制;3) 公平排队避免饥饿;4) 超限时返回什么 HTTP 状态码和 header。
+请详细解释机器学习中的过拟合问题。包括:1) 怎么诊断模型在过拟合;2) 5 种常用的应对策略(正则化、early stopping、dropout 等)的原理和适用场景;3) 在小数据集上特别需要注意的几个点。
+我想搭建一个家用的 LLM 推理服务器,只有一张消费级 GPU(比如 RTX 4090)。请帮我分析:1) 能跑多大的模型(7B/13B/70B 用什么量化方式);2) 推理框架选 vLLM/llama.cpp/TGI 哪个;3) 部署方式(裸机/Docker/Kubernetes)的取舍。
+
+# ===== 创作类 =====
+写一段 100 字左右的故事,主角是一只会编程的猫
+帮我写一封工作申请信,职位是 Senior MLOps Engineer,我有 5 年经验
+用李白的风格写一首关于夜晚加班的诗
+Translate the following sentence to elegant English: 山有木兮木有枝,心悦君兮君不知
+帮我起 5 个具有科技感的产品名,产品是一个面向开发者的 LLM 推理平台
+
+# ===== 数学/逻辑 =====
+有一根 100 米长的绳子,要切成 10 段,每段不少于 5 米,有多少种切法
+解释一下贝叶斯定理的直觉,用一个医学诊断的例子
+求 fibonacci 数列第 30 项的值,并给出 Python 代码
+What is the time complexity of merge sort, and prove it using the master theorem
+证明根号 2 是无理数
+
+# ===== 编程小任务 =====
+用 Python 写一个函数,接受一个 URL,返回该网页的所有外部链接
+写一段 SQL,从 orders 表里查出最近 30 天每天的订单数和金额总和
+用 bash 写一个一行命令,统计当前目录下所有 .py 文件的总行数
+Write a Go function that takes a slice of integers and returns the median
+帮我写一个简单的 Python LRU cache 实现,带 unit test
