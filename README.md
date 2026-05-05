@@ -322,13 +322,56 @@ watch -n 2 'kubectl get hpa -n llm; echo; kubectl get pods -n llm'
 # After 5+ minutes idle, scaleDown kicks in and replicas drop back to 1
 ```
 
+## Performance — Lambda A100 / MIG (this branch)
+
+End-to-end stress test on **Lambda Labs single-node A100 (40 GB), 7× 1g.5gb MIG, vLLM 0.11, Qwen2.5-0.5B fp16**, hammered through the public ingress (`http://<public-ip>/api/v1/chat/completions`). Reproduce with:
+
+```bash
+# 12 min, 60 concurrent users, ~2k-token prompts → drives prefill compute, exercises HPA
+./test/run_lambda.sh extreme
+```
+
+### 08 — Extreme Stress (12 min, concurrency 60, ~2 000-token prompts)
+
+| Metric | Value |
+|---|---|
+| Total requests served | **3,460** |
+| Wall time | 12 min 13 s |
+| **Peak GPU compute (DCGM_FI_PROF_GR_ENGINE_ACTIVE)** | **91.3 %** |
+| Mean GPU compute (12 min average) | 83.4 % |
+| Peak Tensor Core (DCGM_FI_PROF_PIPE_TENSOR_ACTIVE) | 14.5 % |
+| Mean Tensor Core | 12.5 % |
+| HPA replicas (start → peak) | 1 → **5** (of max 7) |
+| MIG instances saturated simultaneously | **5 / 7** |
+| Verdict | ✅ **GPU HOT**, 🟡 HPA partial scale (5/7) |
+
+A 12-min window only fits ~3-4 full HPA scale-up steps after accounting for vLLM cold-start (30-60 s per pod) and the 60 s + 120 s stabilization windows in `vllm-hpa.yaml`. Running `EXTREME_LOAD_DURATION=1200` (20 min) drives the cluster all the way to 7 / 7 replicas.
+
+The 14.5 % Tensor Core peak is **expected for this model size** — Qwen2.5-0.5B has ~1 GB of fp16 weights, so even fully batched decode is dominated by memory-bandwidth, not Tensor Core math. To push Tensor Core utilization above 30 %, swap in a 7B-class model (planned, not in this branch yet).
+
+### vs. Laptop Baseline
+
+The laptop branch (`telemetry`, RTX 4050 6 GB, GPU time-slicing 2 slots) was the lower-bound reference. Hardware change → orchestration change → user-visible result:
+
+| Dimension | Laptop (`telemetry`) | Lambda A100 (this branch) |
+|---|---|---|
+| GPU sharing | software time-slicing, 2 slots | **hardware MIG**, 7 instances |
+| HPA range | 1 ↔ 2 | 1 ↔ **7** |
+| Noisy neighbor risk | high (shared SMs/VRAM) | **none** (MIG enforces isolation) |
+| Peak compute under load | not separable per slot | **91.3 % per MIG, 5 MIGs simultaneously** |
+| Sustained throughput (real-world prompts) | 434 tok/s | (see 06 below — same rig, different stage) |
+| Realistic P95 latency | 5.9 s | (see 06 below) |
+
+---
+
 ## Performance Baseline (laptop reference)
 
 > ⚠️ The numbers below come from the **laptop reference deployment**
 > (kubeadm + RTX 4050 + time-slicing) on the `telemetry` branch.
-> They're kept here as the lower-bound baseline — A100 + MIG numbers
-> for this `GCP_BRANCH` will be filled in once the Lambda Labs deployment
-> runs the same 6-stage suite.
+> They're kept here as the lower-bound baseline. The Lambda A100
+> stress-test results above (section "Performance — Lambda A100 / MIG")
+> are this branch's headline numbers; the 6-stage suite below remains
+> useful for apples-to-apples vLLM behavior across hardware.
 
 End-to-end benchmark on the laptop reference setup: **single-node K8s, NVIDIA RTX 4050 Laptop (6 GB VRAM, ~192 GB/s mem bandwidth), Qwen2.5-0.5B fp16, vLLM 0.11**. Full raw results live in [`test/results/baseline-pre-optimization/`](test/results/baseline-pre-optimization). Reproduce with:
 
