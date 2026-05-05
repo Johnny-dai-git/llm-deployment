@@ -1,0 +1,97 @@
+=== models endpoint ===
+$ curl -fsS --max-time 5 'http://localhost/api/v1/models'
+{"object":"list","data":[{"id":"qwen2.5-0.5b","object":"model","owned_by":"local"}]}
+RESULT: PASS
+
+=== single completion (non-streaming) ===
+$ curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"1+1=?"}],"max_tokens":50}' 'http://localhost/api/v1/chat/completions'
+{"id":"chatcmpl-c597cc4e7e6f47609064b31b3cda949d","object":"chat.completion","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"message":{"role":"assistant","content":"1 + 1 = 2\n\nThis is the basic arithmetic operation of addition in mathematics. It represents the sum of two numbers, where one number is added to another. In this case, we are adding 1 and 1, which gives","refusal":null,"annotations":null,"audio":null,"function_call":null,"tool_calls":[],"reasoning_content":null},"logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null}],"service_tier":null,"system_fingerprint":null,"usage":{"prompt_tokens":33,"total_tokens":83,"completion_tokens":50,"prompt_tokens_details":null},"prompt_logprobs":null,"prompt_token_ids":null,"kv_transfer_params":null}
+RESULT: PASS
+
+=== streaming SSE ===
+$ curl -fsS -N --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"hi"}],"max_tokens":30,"stream":true}' 'http://localhost/api/v1/chat/completions'
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" How"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" can"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" I"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" assist"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" you"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" today"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"?"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" Feel"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" free"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" to"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" ask"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" me"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" any"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" questions"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" or"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" let"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" me"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" know"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" if"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" there"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"'s"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" anything"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" specific"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" you"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":"'d"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" like"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" to"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-440b6100ea95414ab47abc6b446d1c31","object":"chat.completion.chunk","created":1777993999,"model":"qwen2.5-0.5b","choices":[{"index":0,"delta":{"content":" discuss"},"logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null}]}
+
+data: [DONE]
+RESULT: PASS
+
+=== multi-turn conversation ===
+$ curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"我叫小明"},{"role":"assistant","content":"你好,小明"},{"role":"user","content":"我叫什么?"}],"max_tokens":50}' 'http://localhost/api/v1/chat/completions'
+{"id":"chatcmpl-5ca1e4f8d4eb4aa2886577129fe05c16","object":"chat.completion","created":1777994000,"model":"qwen2.5-0.5b","choices":[{"index":0,"message":{"role":"assistant","content":"您是Qwen，来自阿里云。如果您有任何问题或需要帮助，请随时告诉我，我会尽力提供支持。","refusal":null,"annotations":null,"audio":null,"function_call":null,"tool_calls":[],"reasoning_content":null},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null}],"service_tier":null,"system_fingerprint":null,"usage":{"prompt_tokens":51,"total_tokens":76,"completion_tokens":25,"prompt_tokens_details":null},"prompt_logprobs":null,"prompt_token_ids":null,"kv_transfer_params":null}
+RESULT: PASS
+
+=== max_tokens enforcement ===
+$ curl -fsS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[{"role":"user","content":"写 1000 字的小说"}],"max_tokens":10}' 'http://localhost/api/v1/chat/completions'
+{"id":"chatcmpl-8e0c0253449a49d7b380aa8a3d64054f","object":"chat.completion","created":1777994000,"model":"qwen2.5-0.5b","choices":[{"index":0,"message":{"role":"assistant","content":"好的，我将为您创作一篇100","refusal":null,"annotations":null,"audio":null,"function_call":null,"tool_calls":[],"reasoning_content":null},"logprobs":null,"finish_reason":"length","stop_reason":null,"token_ids":null}],"service_tier":null,"system_fingerprint":null,"usage":{"prompt_tokens":38,"total_tokens":48,"completion_tokens":10,"prompt_tokens_details":null},"prompt_logprobs":null,"prompt_token_ids":null,"kv_transfer_params":null}
+RESULT: PASS
+
+=== error handling: unknown model returns 4xx ===
+$ curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Content-Type: application/json' -X POST -d '{"model":"does-not-exist-99","messages":[{"role":"user","content":"x"}]}' 'http://localhost/api/v1/chat/completions'
+404
+RESULT: PASS
+
+=== error handling: empty messages returns 4xx ===
+$ curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -H 'Content-Type: application/json' -X POST -d '{"model":"qwen2.5-0.5b","messages":[]}' 'http://localhost/api/v1/chat/completions'
+400
+RESULT: PASS
+

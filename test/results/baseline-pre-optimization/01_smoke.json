@@ -1,0 +1,9 @@
+{
+  "test": "01_smoke",
+  "total": 7,
+  "pass": 7,
+  "fail": 0,
+  "endpoint": "http://localhost/api/v1/chat/completions",
+  "model": "qwen2.5-0.5b",
+  "cases": [{"name":"models endpoint","result":"PASS"},{"name":"single completion (non-streaming)","result":"PASS"},{"name":"streaming SSE","result":"PASS"},{"name":"multi-turn conversation","result":"PASS"},{"name":"max_tokens enforcement","result":"PASS"},{"name":"error handling: unknown model returns 4xx","result":"PASS"},{"name":"error handling: empty messages returns 4xx","result":"PASS"}]
+}

@@ -1,0 +1,12 @@
+{
+  "test": "04_hpa",
+  "load_duration_sec": 240,
+  "load_concurrency": 20,
+  "initial_replicas": 1,
+  "peak_replicas": 2,
+  "final_replicas": "2",
+  "hpa_min": "1",
+  "hpa_max": "2",
+  "hpa_triggered": true,
+  "timeline_file": "/home/johnny/Desktop/projects/llm-server/llm-deployment/test/results/20260505-111318/04_hpa_timeline.txt"
+}

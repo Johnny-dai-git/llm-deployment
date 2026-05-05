@@ -1,0 +1,27 @@
+=== 2026-05-05 11:29:05 ===
+--- pods (llm) ---
+NAME                            READY   STATUS        RESTARTS      AGE     IP               NODE     NOMINATED NODE   READINESS GATES
+landing-nginx-dddd7574d-8n8s9   1/1     Running       0             3m41s   192.168.74.89    system   <none>           <none>
+llm-api-6ff687fd6b-n4j87        1/1     Running       1 (10h ago)   12h     192.168.74.127   system   <none>           <none>
+llm-web-8ff59bd5d-n45lc         1/1     Running       1 (10h ago)   23h     192.168.74.117   system   <none>           <none>
+vllm-worker-7bd4c46cdf-64w5l    1/1     Running       0             10h     192.168.74.88    system   <none>           <none>
+vllm-worker-7bd4c46cdf-d5zpq    0/1     Unknown       0             22h     <none>           system   <none>           <none>
+vllm-worker-7bd4c46cdf-fx2ng    0/1     Terminating   0             13m     192.168.74.87    system   <none>           <none>
+--- pods (kube-system control plane) ---
+etcd-system                                1/1     Running   16 (10h ago)   23h   192.168.0.225    system   <none>           <none>
+kube-apiserver-system                      1/1     Running   18 (10h ago)   23h   192.168.0.225    system   <none>           <none>
+kube-controller-manager-system             1/1     Running   20 (10h ago)   23h   192.168.0.225    system   <none>           <none>
+kube-scheduler-system                      1/1     Running   22 (10h ago)   23h   192.168.0.225    system   <none>           <none>
+--- HPA (llm) ---
+NAME          REFERENCE                TARGETS                        MINPODS   MAXPODS   REPLICAS   AGE
+llm-api       Deployment/llm-api       cpu: 4%/60%, memory: 16%/75%   1         3         1          23h
+vllm-worker   Deployment/vllm-worker   0/5                            1         2         1          23h
+--- node resources ---
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource           Requests       Limits
+  --------           --------       ------
+  cpu                4700m (39%)    8800m (73%)
+  memory             12058Mi (38%)  25172Mi (80%)
+  ephemeral-storage  0 (0%)         0 (0%)
+

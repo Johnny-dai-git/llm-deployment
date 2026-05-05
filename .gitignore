@@ -1,9 +1,10 @@
 # Test run outputs — every run produces a new timestamped directory,
-# don't pollute git history with these. Earlier baseline directories
-# already in the tree (e.g. test/results/20260504-220821/) stay tracked
-# because they were committed before this rule existed.
+# don't pollute git history with these. Named baseline / labeled runs
+# get whitelisted explicitly so they survive the wildcard ignore.
 test/results/*/
 !test/results/.gitkeep
+!test/results/baseline-pre-optimization/
+!test/results/baseline-post-optimization/
 
 # Local secrets, never commit
 .env
