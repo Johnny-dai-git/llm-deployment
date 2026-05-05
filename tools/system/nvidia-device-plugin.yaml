@@ -1,18 +1,32 @@
 # =====================================================================
-# NVIDIA Device Plugin + Time-Slicing 配置
+# NVIDIA Device Plugin + MIG (Multi-Instance GPU)
+# ---------------------------------------------------------------------
+# This is the GCP/A100 branch. Compared to the laptop branch:
 #
-# 这份文件做了两件事:
-#   1) ConfigMap 定义 GPU 切片策略
-#      - 当前:把 1 块物理 GPU 切成 2 份 (replicas: 2)
-#      - 让一台 GPU 节点能调度 2 个请求 nvidia.com/gpu: 1 的 Pod
-#      - 注意:这是 time-slicing(时间片),不是真并行
-#        多个 Pod 共享同一块 GPU,K8s 不知道它们在抢
-#   2) DaemonSet 跑 NVIDIA Device Plugin
-#      - --config-file 引用上面的 ConfigMap
+#   laptop:    1× RTX 4050 (6 GB) split into 2 virtual GPUs via
+#              "time-slicing" (software-level scheduling, no isolation)
 #
-# 上 Lambda H100/A100 时切换到 MIG:
-#   sharing 段去掉,加上:
-#     migStrategy: single  (或 mixed)
+#   here:      1× A100 (40 GB) split into 7 hardware-isolated MIG
+#              instances of 1g.5gb (5 GB each, 1/7 of the SMs).
+#              MIG provides true memory + compute isolation between
+#              pods, eliminating the "noisy neighbor" problem
+#              time-slicing has, and lets HPA scale up to 7 replicas
+#              on a single physical GPU for high-availability serving.
+#
+# A100 40GB MIG profile choices (pick one when creating the node pool):
+#   - 7× 1g.5gb        — 7 small instances (5 GB each, 1/7 SMs)  ← we use this
+#   - 4× 1g.5gb + 1× 2g.10gb (mixed)
+#   - 3× 2g.10gb       — 3 medium (10 GB each)
+#   - 2× 3g.20gb       — 2 large (20 GB each)
+#   - 1× 7g.40gb       — whole card
+#
+# The MIG layout itself is configured *outside* this manifest, via
+# `nvidia-smi mig` on each GPU node, or via the GPU Operator with a
+# ClusterPolicy. On GKE, enable MIG when creating the node pool:
+#   gcloud container node-pools create gpu-mig \
+#       --cluster=... \
+#       --machine-type=a2-highgpu-1g \
+#       --accelerator=type=nvidia-tesla-a100,count=1,gpu-partition-size=1g.5gb
 # =====================================================================
 apiVersion: v1
 kind: ConfigMap
@@ -23,17 +37,13 @@ data:
   config.yaml: |
     version: v1
     flags:
-      migStrategy: none
-    sharing:
-      timeSlicing:
-        # renameByDefault: false 表示不把 nvidia.com/gpu 改名,
-        # 保持兼容现有 Deployment 的 nvidia.com/gpu: 1 写法
-        renameByDefault: false
-        # 1 块物理 GPU -> 对外宣称 2 块"虚拟 GPU"
-        # 6 GB 显存上,搭配 vllm --gpu-memory-utilization=0.4 (2.4 GB/份)
-        resources:
-          - name: nvidia.com/gpu
-            replicas: 2
+      # `single` strategy:plugin treats every MIG instance as a regular
+      # `nvidia.com/gpu: 1` resource. Pods schedule against this
+      # uniform resource without needing to know MIG profile names.
+      # Use `mixed` strategy if you want to expose different sized
+      # MIG instances on the same node as separate resources
+      # (nvidia.com/mig-3g.20gb etc.).
+      migStrategy: single
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -61,24 +71,20 @@ spec:
           effect: NoSchedule
 
       volumes:
-        # kubelet device plugin socket
         - name: device-plugin
           hostPath:
             path: /var/lib/kubelet/device-plugins
 
-        # NVIDIA userspace libraries (NVML 在这里)
         - name: nvidia-lib
           hostPath:
             path: /usr/lib/x86_64-linux-gnu
             type: Directory
 
-        # NVIDIA device nodes
         - name: nvidia-dev
           hostPath:
             path: /dev
             type: Directory
 
-        # ⭐ 新增:挂载 timeSlicing 配置
         - name: device-plugin-config
           configMap:
             name: nvidia-device-plugin-config
@@ -88,7 +94,6 @@ spec:
           image: nvcr.io/nvidia/k8s-device-plugin:v0.15.0
           imagePullPolicy: IfNotPresent
 
-          # ⭐ 新增:让 plugin 读取我们的 config.yaml
           args:
             - --config-file=/etc/nvidia-device-plugin/config.yaml
 
@@ -110,7 +115,6 @@ spec:
             - name: nvidia-dev
               mountPath: /dev
 
-            # ⭐ 新增
             - name: device-plugin-config
               mountPath: /etc/nvidia-device-plugin
               readOnly: true

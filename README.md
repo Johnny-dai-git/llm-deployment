@@ -1,6 +1,8 @@
-# LLM Deployment
+# LLM Deployment — GCP / A100 branch
 
 Self-hosted, Kubernetes-based LLM inference platform. OpenAI-compatible API on top of vLLM, fully observable, with GitOps continuous deployment.
+
+> **This branch (`GCP_BRANCH`) targets GKE + A100 with MIG (Multi-Instance GPU).** For the laptop reference deployment (kubeadm + RTX 4050 + GPU time-slicing), see the [`telemetry`](https://github.com/Johnny-dai-git/llm-deployment/tree/telemetry) branch.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -37,13 +39,13 @@ Self-hosted, Kubernetes-based LLM inference platform. OpenAI-compatible API on t
 ## What's Inside
 
 - **OpenAI-compatible API** with SSE streaming for chat completions
-- **GPU inference** via vLLM (currently `Qwen2.5-0.5B-Instruct`)
-- **GitOps deployment** via ArgoCD watching this repo
-- **Auto image updates** via ArgoCD Image Updater watching GHCR
+- **GPU inference** via vLLM (currently `Qwen2.5-0.5B-Instruct` fp16)
+- **GitOps deployment** via ArgoCD watching this branch (`GCP_BRANCH`)
+- **Auto image updates** via ArgoCD Image Updater watching GHCR / Artifact Registry
 - **Full observability**: Prometheus + Grafana + DCGM (GPU metrics) + ServiceMonitors for the business services
-- **Autoscaling**: HPA on `llm-api` (CPU) and `vllm-worker` (vLLM queue depth via prometheus-adapter)
-- **GPU time-slicing** so a single laptop GPU presents 2 schedulable slots, allowing rolling updates without downtime
-- **Self-hosted CI**: GitHub Actions self-hosted runner builds and pushes images on every commit to `main` / `telemetry`
+- **Autoscaling**: HPA on `llm-api` (CPU) and `vllm-worker` (vLLM queue depth via prometheus-adapter), 1↔7 replicas on a single A100
+- **MIG (Multi-Instance GPU)** carves one A100 (40 GB) into 7 hardware-isolated 1g.5gb instances, one vllm pod per MIG instance — true memory + compute isolation, no noisy-neighbor risk
+- **Self-hosted CI**: GitHub Actions self-hosted runner builds and pushes images on every commit to `main` / `telemetry` / `GCP_BRANCH`
 
 ## Quick Start (laptop)
 
@@ -316,7 +318,13 @@ watch -n 2 'kubectl get hpa -n llm; echo; kubectl get pods -n llm'
 # After 5+ minutes idle, scaleDown kicks in and replicas drop back to 1
 ```
 
-## Performance Baseline
+## Performance Baseline (laptop reference)
+
+> ⚠️ The numbers below come from the **laptop reference deployment**
+> (kubeadm + RTX 4050 + time-slicing) on the `telemetry` branch.
+> They're kept here as the lower-bound baseline — A100 + MIG numbers
+> for this `GCP_BRANCH` will be filled in once the GKE deployment
+> runs the same 6-stage suite.
 
 End-to-end benchmark on the laptop reference setup: **single-node K8s, NVIDIA RTX 4050 Laptop (6 GB VRAM, ~192 GB/s mem bandwidth), Qwen2.5-0.5B fp16, vLLM 0.11**. Full raw results live in [`test/results/baseline-pre-optimization/`](test/results/baseline-pre-optimization). Reproduce with:
 
@@ -390,9 +398,15 @@ Stages 02 and 03 reuse the same prompt for every request, so vLLM's automatic pr
 
 **Capacity planning should use the 06 numbers (~434 tok/s sustained, P95 5.9 s), not the 824 tok/s peak.**
 
-## Cloud Deployment
+## Branches
 
-A separate `GCP_BRANCH` tracks the work for moving this stack onto GCP (GKE + GPU node pool, MIG instead of time-slicing, Artifact Registry instead of GHCR, GCS-mounted models). The `laptop` setup here is the reference deployment.
+| Branch | Target | GPU | GPU sharing | HPA range | Storage |
+|---|---|---|---|---|---|
+| [`telemetry`](https://github.com/Johnny-dai-git/llm-deployment/tree/telemetry) | laptop, kubeadm | RTX 4050 6 GB | time-slicing (software, 2 slots) | 1↔2 | hostPath |
+| **`GCP_BRANCH`** *(this branch)* | GKE on GCP | A100 40 GB | **MIG (hardware, 7× 1g.5gb)** | 1↔7 | GCS Fuse / hostPath fallback |
+| `main` | stable line | — | — | — | — |
+
+Both deploy the same `Qwen2.5-0.5B-Instruct` fp16 model so the gap is purely about the underlying hardware and orchestration.
 
 ## Troubleshooting
 

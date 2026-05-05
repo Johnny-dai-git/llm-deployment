@@ -9,13 +9,11 @@ RUN apt-get update && apt-get install -y \
 
 RUN python3 -m pip install --upgrade pip
 
-# 关键：让 vllm 自己选择兼容 torch / CUDA
-# transformers 必须固定到 4.57.6 — vllm 0.11.0 还不支持 transformers 5.x,
-# 用最新版 transformers 会报:
+# Pin transformers to 4.57.6 — vLLM 0.11.0 doesn't support transformers 5.x:
 #   AttributeError: Qwen2Tokenizer has no attribute all_special_tokens_extended
-# 见 https://github.com/QwenLM/Qwen3-VL/issues/2058
+# See: https://github.com/QwenLM/Qwen3-VL/issues/2058
 RUN pip install vllm==0.11.0 transformers==4.57.6 --extra-index-url https://download.pytorch.org/whl/cu122
 
-# RTX / 消费级卡稳定性
-ENV VLLM_USE_FLASH_ATTENTION=0
-ENV VLLM_DISABLE_FLASH_ATTN=1
+# On A100 / H100 we let vLLM use its preferred backends (FlashAttention 2,
+# CUDA Graph, cascade attention). The RTX-specific defensive disables that
+# the laptop branch has are intentionally NOT set here.

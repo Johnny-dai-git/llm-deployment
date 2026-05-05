@@ -50,11 +50,13 @@ spec:
           protocol: TCP
 
         resources:
-          # 资源调优记录:
-          # - qwen2.5-0.5b 实测 host RAM 用量约 3 GB(Python + vLLM + 模型 buffer)
-          # - GPU time-slicing 把 1 张物理卡切成 2 份,HPA 上限 2 副本
-          # - 笔记本节点 30 GB 总 RAM,2 × 4Gi requests = 8Gi,留足 buffer
-          # - 上 Lambda(独占 GPU + 大模型)时调回 16Gi 或更高
+          # GCP A100 + MIG 1g.5gb sizing:
+          # - Each MIG 1g.5gb instance gives 5 GB VRAM and 1/7 of A100 SMs.
+          # - Qwen2.5-0.5B fp16 weights ~1 GB; the rest of VRAM is KV cache.
+          # - Host RAM is plentiful on a2-highgpu-1g (85 GB total);
+          #   keeping the same 4Gi/8Gi values as the laptop branch keeps
+          #   per-pod RAM small so HPA can pack 7 replicas on a single
+          #   GPU node without RAM contention.
           requests:
             nvidia.com/gpu: 1
             cpu: "1"
@@ -70,26 +72,30 @@ spec:
           - vllm.entrypoints.openai.api_server
 
         args:
-          # ========= 模型 =========
+          # ========= Model =========
+          # Same model as the laptop branch (Qwen2.5-0.5B fp16) so the
+          # before/after comparison is purely about hardware:
+          # software time-slicing on RTX 4050 → hardware MIG on A100.
           - --model=/model/qwen2.5-0.5b
           - --served-model-name=qwen2.5-0.5b
 
-          # ========= 服务监听 =========
+          # ========= Server =========
           - --host=0.0.0.0
           - --port=8002
 
-          # ========= 稳定参数（已本地验证） =========
+          # ========= Inference settings =========
           - --dtype=float16
-          # 0.4:6 GB GPU 切 2 份后,每份 ~2.4 GB,够装 0.5B 模型 + KV cache
-          # 上 Lambda 单 Pod 独占 GPU 时改回 0.8 或更高
-          - --gpu-memory-utilization=0.4
+          # 0.85 of a 5 GB MIG slice = ~4.25 GB usable
+          # (1 GB weights + 3 GB KV cache + headroom)
+          - --gpu-memory-utilization=0.85
           - --max-model-len=2048
           - --max-num-seqs=8
           - --max-num-batched-tokens=2048
 
-          # ========= 关键：避免 Flash / CUDA Graph 崩溃 =========
-          - --disable-cascade-attn
-          - --enforce-eager
+          # On A100 we let vLLM use its preferred backends — FlashAttention 2,
+          # CUDA Graph, cascade attention are all stable on data-center cards.
+          # The laptop branch had to defensively disable these to survive a
+          # consumer RTX 4050; not needed here.
 
         volumeMounts:
         - name: model-volume
@@ -134,11 +140,19 @@ spec:
           # liveness 失败 -> Pod 重启(慎用,会触发模型重新加载)
 
       volumes:
+      # GCP path: model weights live in a GCS bucket and are mounted
+      # via GCS Fuse CSI driver, so all GPU pods (across nodes) read
+      # from the same backing store without per-node downloads.
+      # See: https://cloud.google.com/kubernetes-engine/docs/how-to/persistent-volumes/cloud-storage-fuse-csi-driver
+      #
+      # The sidecar that mounts the bucket is configured via
+      # spec.template.metadata.annotations:
+      #   gke-gcsfuse/volumes: "true"
+      # and uses Workload Identity to authenticate (no SA keys).
+      #
+      # For now we keep the simple hostPath for local A100 testing;
+      # swap this block for the GCS Fuse PVC when running on GKE.
       - name: model-volume
         hostPath:
-          # 本地开发环境路径(Johnny 笔记本)
-          # 容器内挂载到 /model,vLLM 启动参数 --model=/model/qwen2.5-0.5b
-          # 所以这个目录下要有 qwen2.5-0.5b/ 子目录(放模型权重文件)
-          # 上 Lambda 时改成 /home/ubuntu/k8s/model
-          path: /home/johnny/Desktop/projects/llm-server/models
+          path: /mnt/models
           type: DirectoryOrCreate

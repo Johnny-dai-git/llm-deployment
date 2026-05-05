@@ -271,16 +271,16 @@ data:
           <div class="badge">Cluster Online</div>
           <h1>LLM Inference Platform</h1>
           <p class="subtitle">
-            End-to-end self-hosted LLM serving on a single-node Kubernetes cluster.
-            From bare metal to OpenAI-compatible streaming API, with full observability and GitOps.
+            End-to-end self-hosted LLM serving on Kubernetes (GKE + A100).
+            From bare cluster to OpenAI-compatible streaming API, with MIG-isolated GPU sharing, full observability, and GitOps.
           </p>
           <div class="stack">
-            <span class="tech">Kubernetes</span>
+            <span class="tech">GKE</span>
+            <span class="tech">A100 + MIG</span>
             <span class="tech">vLLM 0.11</span>
+            <span class="tech">FlashAttention 2</span>
             <span class="tech">FastAPI</span>
-            <span class="tech">Calico</span>
             <span class="tech">NVIDIA DCGM</span>
-            <span class="tech">GPU time-slicing</span>
             <span class="tech">ArgoCD</span>
             <span class="tech">Prometheus</span>
             <span class="tech">Grafana</span>
@@ -291,20 +291,20 @@ data:
 
         <div class="stats">
           <div class="stat">
-            <div class="stat-value">~800</div>
-            <div class="stat-label">Peak tok/s</div>
+            <div class="stat-value">0.5B</div>
+            <div class="stat-label">Qwen 2.5 fp16</div>
           </div>
           <div class="stat">
-            <div class="stat-value">1↔2</div>
+            <div class="stat-value">1↔7</div>
             <div class="stat-label">HPA replicas</div>
           </div>
           <div class="stat">
-            <div class="stat-value">2.4 GB</div>
-            <div class="stat-label">VRAM / replica</div>
+            <div class="stat-value">5 GB</div>
+            <div class="stat-label">VRAM / replica (MIG)</div>
           </div>
           <div class="stat">
-            <div class="stat-value">0.5B</div>
-            <div class="stat-label">Qwen 2.5</div>
+            <div class="stat-value">A100</div>
+            <div class="stat-label">40 GB · 7× MIG 1g.5gb</div>
           </div>
         </div>
 
@@ -319,7 +319,7 @@ data:
             <div class="arrow">→</div>
             <div class="node">vLLM Worker</div>
             <div class="arrow">→</div>
-            <div class="node gpu">RTX 4050 GPU</div>
+            <div class="node gpu">A100 MIG instance</div>
           </div>
         </div>
 
@@ -358,8 +358,8 @@ data:
         <div class="highlights">
           <div class="hl">
             <span class="hl-icon">⚙️</span>
-            <div class="hl-title">GPU time-slicing</div>
-            <div class="hl-desc">1 physical RTX 4050 → 2 virtual nvidia.com/gpu slots, configured via NVIDIA Device Plugin.</div>
+            <div class="hl-title">A100 + MIG isolation</div>
+            <div class="hl-desc">1 physical A100 → 7 hardware-isolated MIG instances (1g.5gb each), one vllm pod per MIG. True memory + compute isolation, no noisy-neighbor risk.</div>
           </div>
           <div class="hl">
             <span class="hl-icon">📈</span>

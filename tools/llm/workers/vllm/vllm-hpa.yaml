@@ -11,9 +11,11 @@ spec:
     kind: Deployment
     name: vllm-worker
   minReplicas: 1
-  maxReplicas: 2                  # ⚠️ 笔记本 GPU time-slicing 切 2 份
-                                  # 上限就 2,第 3 个 Pod 会 Pending
-                                  # 上 Lambda H100/A100 后改成 4 / 8
+  # GCP A100 + MIG 1g.5gb × 7: each MIG instance is hardware-isolated,
+  # one vllm pod per MIG. 7 replicas on a single A100 = highest
+  # availability + isolation on a single physical GPU. Adding a second
+  # A100 node bumps this to 14, etc.
+  maxReplicas: 7
   metrics:
     # ============ 主指标:vLLM 内部等待队列深度 ============
     # 由 prometheus-adapter 暴露(见 tools/helm/monitoring/prometheus-adapter-values.yaml)
